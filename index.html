@@ -234,7 +234,7 @@
                     </div>
                     <div class="text-slate-300">赏金：<span id="hud-credits" class="text-amber-400 font-black font-mono">100</span> PTS <span class="hidden sm:inline text-[10px] text-sky-300">(B键工坊)</span></div>
                     <div class="text-slate-400">手电：<span id="hud-flashlight-status" class="text-emerald-400 font-semibold">开启(F)</span> | 手雷 <span id="hud-grenades" class="text-amber-300 font-mono font-bold">3</span>(G)</div>
-                    <div class="hidden md:block text-[10px] text-amber-300/90 font-mono" id="hud-reload-hint">右键:倍镜/机瞄 | [1/2]切主副枪 | [V]近战 | [E]补给</div>
+                    <div class="hidden md:block text-[10px] text-amber-300/90 font-mono" id="hud-reload-hint">Q:狙击倍镜开/关 | [1/2]切主副枪 | [V]近战 | [E]补给</div>
                 </div>
             </div>
 
@@ -627,7 +627,7 @@
                                     <span class="font-black text-sm text-white">🎯 冷钢凝视狙击枪 (主武器 1 · 含8倍镜)</span>
                                     <span class="text-[11px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono font-bold">伤害 135 | 爆头 236</span>
                                 </div>
-                                <p class="text-[11px] text-slate-300 mt-1 leading-relaxed">重型冷锻长枪管与 8.0X 光学密位高倍狙击镜；右键（或触屏开镜键）开启高倍瞄准镜，远距离精准狙杀狂暴暴君与畸变母体弱点。</p>
+                                <p class="text-[11px] text-slate-300 mt-1 leading-relaxed">重型冷锻长枪管与 8.0X 光学密位高倍狙击镜；按 Q（或触屏开镜键）开启高倍瞄准镜，远距离精准狙杀狂暴暴君与畸变母体弱点。</p>
                             </div>
                         </div>
                     </div>
@@ -692,7 +692,7 @@
                     <!-- 调试/快速体验提示与启动按钮 -->
                     <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
                         <div class="font-bold text-slate-200">💡 战术操作提示：</div>
-                        <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，<b>右键</b>开镜/狙击倍镜，<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
+                        <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，狙击枪按 <b>Q</b> 切换 8 倍镜，<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
                         <div>• 手机/平板端：左下摇杆移动；右侧空白区域上下左右滑动即可转向/瞄准，枪模会随操作轻微跟随；右下角一键开镜、射击、切枪、投雷。</div>
                     </div>
                 </div>
@@ -741,7 +741,7 @@
                     btn.textContent = this.enabled ? '🔊 音效(M)' : '🔇 静音(M)';
                 }
                 if (this.bgmGain && this.ctx) {
-                    this.bgmGain.gain.setTargetAtTime(this.enabled ? 0.22 : 0.0001, this.ctx.currentTime, 0.15);
+                    this.bgmGain.gain.setTargetAtTime(this.enabled ? 0.16 : 0.0001, this.ctx.currentTime, 0.15);
                 } else if (this.enabled && this.ctx && !this.bgmPlaying) {
                     this.startBGM();
                 }
@@ -764,99 +764,115 @@
                 this.bgmPlaying = true;
                 const now = this.ctx.currentTime;
 
+                // 纯中高频恐怖氛围：不再使用低音铺底、低频脉冲或次声轰鸣。
                 const master = this.ctx.createGain();
-                master.gain.setValueAtTime(this.enabled ? 0.22 : 0.0001, now);
-                master.connect(this.ctx.destination);
+                master.gain.setValueAtTime(this.enabled ? 0.16 : 0.0001, now);
                 this.bgmGain = master;
 
-                const droneFreqs = [36.71, 55.0, 73.42];
-                droneFreqs.forEach((freq, idx) => {
+                // 两级高通专门削弱低频，让背景音乐保持清瘦、空灵，不产生低音震动。
+                const lowCutA = this.ctx.createBiquadFilter();
+                lowCutA.type = 'highpass';
+                lowCutA.frequency.setValueAtTime(300, now);
+                lowCutA.Q.setValueAtTime(0.707, now);
+                const lowCutB = this.ctx.createBiquadFilter();
+                lowCutB.type = 'highpass';
+                lowCutB.frequency.setValueAtTime(360, now);
+                lowCutB.Q.setValueAtTime(0.707, now);
+                master.connect(lowCutA);
+                lowCutA.connect(lowCutB);
+                lowCutB.connect(this.ctx.destination);
+
+                // 轻薄、飘忽的中高频音垫，保留末日压迫感但不含低音 Drone。
+                const padNotes = [392.00, 493.88, 587.33];
+                padNotes.forEach((freq, idx) => {
                     const osc = this.ctx.createOscillator();
                     const filter = this.ctx.createBiquadFilter();
-                    const g = this.ctx.createGain();
-
-                    osc.type = idx === 2 ? 'triangle' : 'sawtooth';
-                    osc.frequency.setValueAtTime(freq, now);
-                    osc.detune.setValueAtTime((idx - 1) * 9, now);
-
-                    filter.type = 'lowpass';
-                    filter.frequency.setValueAtTime(160, now);
-
+                    const gain = this.ctx.createGain();
                     const lfo = this.ctx.createOscillator();
                     const lfoGain = this.ctx.createGain();
-                    lfo.frequency.setValueAtTime(0.08 + idx * 0.03, now);
-                    lfoGain.gain.setValueAtTime(55, now);
-                    lfo.connect(filter.frequency);
-                    lfo.start(now);
 
-                    g.gain.setValueAtTime(idx === 0 ? 0.28 : 0.16, now);
+                    osc.type = idx === 1 ? 'sine' : 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    osc.detune.setValueAtTime((idx - 1) * 5, now);
+
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(1500 + idx * 180, now);
+                    filter.Q.setValueAtTime(0.7, now);
+
+                    lfo.type = 'sine';
+                    lfo.frequency.setValueAtTime(0.07 + idx * 0.025, now);
+                    lfoGain.gain.setValueAtTime(0.012, now);
+                    lfo.connect(lfoGain);
+                    lfoGain.connect(gain.gain);
+
+                    gain.gain.setValueAtTime(idx === 0 ? 0.025 : 0.018, now);
                     osc.connect(filter);
-                    filter.connect(g);
-                    g.connect(master);
+                    filter.connect(gain);
+                    gain.connect(master);
                     osc.start(now);
+                    lfo.start(now);
                     this.bgmNodes.push(osc, lfo);
                 });
 
+                // 中高频风噪：带有缓慢变化的气流感，不再使用低频风声轰鸣。
                 const windNoise = this.ctx.createBufferSource();
                 windNoise.buffer = this.createNoiseBuffer(4.0);
                 windNoise.loop = true;
-
+                const windHighpass = this.ctx.createBiquadFilter();
+                windHighpass.type = 'highpass';
+                windHighpass.frequency.setValueAtTime(620, now);
+                windHighpass.Q.setValueAtTime(0.65, now);
                 const windFilter = this.ctx.createBiquadFilter();
                 windFilter.type = 'bandpass';
-                windFilter.frequency.setValueAtTime(260, now);
-                windFilter.Q.setValueAtTime(3.2, now);
-
+                windFilter.frequency.setValueAtTime(1050, now);
+                windFilter.Q.setValueAtTime(0.55, now);
+                const windLfo = this.ctx.createOscillator();
+                const windLfoGain = this.ctx.createGain();
+                windLfo.frequency.setValueAtTime(0.09, now);
+                windLfoGain.gain.setValueAtTime(320, now);
+                windLfo.connect(windLfoGain);
+                windLfoGain.connect(windFilter.frequency);
                 const windGain = this.ctx.createGain();
-                windGain.gain.setValueAtTime(0.14, now);
-                windNoise.connect(windFilter);
+                windGain.gain.setValueAtTime(0.045, now);
+                windNoise.connect(windHighpass);
+                windHighpass.connect(windFilter);
                 windFilter.connect(windGain);
                 windGain.connect(master);
                 windNoise.start(now);
-                this.bgmNodes.push(windNoise);
+                windLfo.start(now);
+                this.bgmNodes.push(windNoise, windLfo);
 
-                const eerieNotes = [146.83, 155.56, 174.61, 207.65, 220.0, 233.08];
+                // 偶尔出现空灵、偏高的变调音符，取代原本 28–62Hz 的低频心跳脉冲。
+                const eerieNotes = [392.00, 440.00, 493.88, 523.25, 587.33, 659.25, 783.99, 880.00];
                 let beatStep = 0;
                 this.bgmTimer = setInterval(() => {
                     if (!this.enabled || !this.ctx || !gameState.isRunning || gameState.isPaused) return;
                     const t = this.ctx.currentTime;
 
-                    const pulseOsc = this.ctx.createOscillator();
-                    const pulseGain = this.ctx.createGain();
-                    pulseOsc.type = 'sine';
-                    pulseOsc.frequency.setValueAtTime(62, t);
-                    pulseOsc.frequency.exponentialRampToValueAtTime(28, t + 0.35);
-                    pulseGain.gain.setValueAtTime(0.32, t);
-                    pulseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-                    pulseOsc.connect(pulseGain);
-                    pulseGain.connect(master);
-                    pulseOsc.start(t);
-                    pulseOsc.stop(t + 0.4);
-
-                    if (beatStep % 2 === 0 && Math.random() < 0.75) {
+                    if (Math.random() < 0.78) {
                         const noteOsc = this.ctx.createOscillator();
                         const noteFilter = this.ctx.createBiquadFilter();
                         const noteGain = this.ctx.createGain();
-
                         const freq = eerieNotes[Math.floor(Math.random() * eerieNotes.length)];
-                        noteOsc.type = 'sawtooth';
-                        noteOsc.frequency.setValueAtTime(freq, t + 0.15);
-                        noteOsc.frequency.linearRampToValueAtTime(freq * 0.97, t + 2.1);
+                        const duration = 1.5 + Math.random() * 1.2;
 
-                        noteFilter.type = 'lowpass';
-                        noteFilter.frequency.setValueAtTime(620, t + 0.15);
-
-                        noteGain.gain.setValueAtTime(0.001, t + 0.15);
-                        noteGain.gain.linearRampToValueAtTime(0.11, t + 0.5);
-                        noteGain.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
-
+                        noteOsc.type = beatStep % 3 === 0 ? 'sine' : 'triangle';
+                        noteOsc.frequency.setValueAtTime(freq, t);
+                        noteOsc.frequency.linearRampToValueAtTime(Math.max(370, freq * (0.985 + Math.random() * 0.025)), t + duration);
+                        noteFilter.type = 'bandpass';
+                        noteFilter.frequency.setValueAtTime(1050 + Math.random() * 500, t);
+                        noteFilter.Q.setValueAtTime(0.8, t);
+                        noteGain.gain.setValueAtTime(0.001, t);
+                        noteGain.gain.linearRampToValueAtTime(0.035, t + 0.18);
+                        noteGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
                         noteOsc.connect(noteFilter);
                         noteFilter.connect(noteGain);
                         noteGain.connect(master);
-                        noteOsc.start(t + 0.15);
-                        noteOsc.stop(t + 2.25);
+                        noteOsc.start(t);
+                        noteOsc.stop(t + duration + 0.03);
                     }
                     beatStep++;
-                }, 1350);
+                }, 1650);
             }
 
             playZombieSound(zombieType = 'walker', mode = 'idle', distance = 12) {
@@ -1131,7 +1147,7 @@
             3: {
                 id: 3, name: '冷钢凝视狙击枪', soundType: 'sniper', modeText: '8.0X倍镜 · 高精单发',
                 damage: 135, fireRate: 0.98, magSize: 6, reserveMax: 42, reloadTime: 1.9,
-                pellets: 1, spread: 0.0012, auto: false, recoilPitch: 0.088, color: 0x343e49, scale: [0.17, 0.22, 1.02]
+                pellets: 1, spread: 0.00045, auto: false, recoilPitch: 0.088, color: 0x343e49, scale: [0.17, 0.22, 1.02]
             }
         };
 
@@ -2312,12 +2328,21 @@
 
             gameState.lastFireTime = nowSeconds;
             weapon.mag--;
+
+            // 先锁定本次射击的准星方向与相机原点，再播放后坐力；避免狙击枪后坐先抬镜导致弹着点偏离准星。
+            scene.updateMatrixWorld(true);
+            const shotOrigin = camera.getWorldPosition(new THREE.Vector3());
+            const shotQuaternion = camera.getWorldQuaternion(new THREE.Quaternion());
+            const gunGroup = weaponHolder.children[0];
+            const muzzleWorld = gunGroup && gunGroup.userData.muzzleFlash
+                ? gunGroup.userData.muzzleFlash.getWorldPosition(new THREE.Vector3())
+                : new THREE.Vector3(0.22, -0.15, -0.6).applyMatrix4(camera.matrixWorld);
+
             sound.playShoot(weapon.soundType);
             updateHUD();
 
-            // 开火枪身强烈后坐反馈、枪口震动与镜头冲击
+            // 开火枪身强烈后坐反馈、枪口震动与镜头冲击（仅影响视觉，不改变本次射击的已锁定方向）
             gameState.screenShake = Math.max(gameState.screenShake, weapon.id === 3 ? 0.26 : (weapon.id === 2 ? 0.22 : 0.09));
-            const gunGroup = weaponHolder.children[0];
             if (gunGroup) {
                 gunGroup.position.z = -0.36;
                 gunGroup.position.y = -0.23;
@@ -2337,23 +2362,19 @@
             const barrelMeshes = explosiveBarrels.filter(b => !b.exploded).map(b => b.mesh);
             const allTargets = obstacleMeshes.concat(enemyHitMeshes, barrelMeshes);
 
-            // 先更新层级矩阵，再从真实枪口火光位置生成弹道，保证触屏瞄准/枪身惯性时枪口与弹道一致。
-            scene.updateMatrixWorld(true);
-            const muzzleWorld = gunGroup && gunGroup.userData.muzzleFlash
-                ? gunGroup.userData.muzzleFlash.getWorldPosition(new THREE.Vector3())
-                : new THREE.Vector3(0.22, -0.15, -0.6).applyMatrix4(camera.matrixWorld);
             let hitAnyEnemy = false;
             let killedEnemy = false;
-            const spreadFactor = gameState.isADS ? 0.18 : 1.0;
+            // 狙击枪开镜时精准命中屏幕中心；其他武器仍保留正常散布。
+            const spreadFactor = (weapon.id === 3 && gameState.isADS) ? 0 : (gameState.isADS ? 0.18 : 1.0);
 
             for (let p = 0; p < weapon.pellets; p++) {
                 const spreadX = (Math.random() - 0.5) * weapon.spread * spreadFactor;
                 const spreadY = (Math.random() - 0.5) * weapon.spread * spreadFactor;
 
                 const dir = new THREE.Vector3(spreadX, spreadY, -1).normalize();
-                dir.applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+                dir.applyQuaternion(shotQuaternion);
 
-                raycaster.set(camera.getWorldPosition(new THREE.Vector3()), dir);
+                raycaster.set(shotOrigin, dir);
                 raycaster.far = 175;
 
                 const intersects = raycaster.intersectObjects(allTargets, false);
@@ -2925,15 +2946,17 @@
             die() {
                 this.dead = true;
                 gameState.kills++;
-                gameState.credits += (this.stats.reward || 25);
+                const baseReward = this.stats.reward || 25;
+                const actualReward = Math.max(1, Math.round(baseReward * 0.8)); // 每次击杀赏金降低 20%
+                gameState.credits += actualReward;
                 const dist = this.group.position.distanceTo(yawObject.position);
                 sound.playZombieSound(this.zombieType, 'pain', dist);
 
-                addKillFeedItem(`${this.stats.label} (+${this.stats.reward || 25} PTS)`);
+                addKillFeedItem(`${this.stats.label} (+${actualReward} PTS)`);
                 if (this === gameState.activeBoss) {
                     gameState.activeBoss = null;
                     updateBossHUD();
-                    showWaveBanner(`🎉 成功击杀 ${this.stats.label}！获得高额赏金 +${this.stats.reward} PTS`);
+                    showWaveBanner(`🎉 成功击杀 ${this.stats.label}！获得赏金 +${actualReward} PTS（已下调 20%）`);
                     // 如果击败的是 15:00 终极 BOSS 畸变母体主宰，触发胜利结算
                     if (this.zombieType === 'boss_matriarch') {
                         setTimeout(() => handleGameVictory(), 1200);
@@ -3688,6 +3711,10 @@
                 updateHUD();
             }
             if (code === 'KeyB') toggleUpgradeBench();
+            // PC 狙击倍镜独立快捷键：Q 切换开镜，不再依赖鼠标右键。
+            if (code === 'KeyQ' && !e.repeat && gameConfig.systemMode === 'pc' && gameState.isRunning && !gameState.isPaused && !gameState.isUpgradeOpen && gameState.weapons[gameState.currentWeaponIndex]?.id === 3) {
+                setADS(!gameState.isADS);
+            }
             if (code === 'Digit1') switchWeapon(0);
             if (code === 'Digit2') switchWeapon(1);
             if (code === 'KeyM') sound.toggleMute();
@@ -3718,10 +3745,7 @@
 
         canvas.addEventListener('mousedown', (e) => {
             if (!gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameConfig.systemMode === 'mobile') return;
-            if (e.button === 2) {
-                setADS(true);
-                return;
-            }
+            // 鼠标左键只负责射击；瞄准镜改由 Q 键切换。
             if (e.button !== 0) return;
             if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
                 try { canvas.requestPointerLock(); } catch (err) {}
@@ -3732,7 +3756,6 @@
 
         window.addEventListener('mouseup', (e) => {
             if (e.button === 0) gameState.mouseDown = false;
-            if (e.button === 2 && gameConfig.systemMode === 'pc') setADS(false);
         });
 
         document.addEventListener('pointerlockchange', () => {
