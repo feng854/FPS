@@ -73,7 +73,7 @@
         }
         #mobile-controls .touch-btn,
         #joystick-zone { touch-action: none; }
-        /* 手机/平板的瞄准区视觉提示：有边框、方向提示和可点击的微调键 */
+        /* 手机/平板：空白画面区域均可拖动瞄准；方向键微调已移除 */
         #touch-look-zone {
             background: linear-gradient(135deg, rgba(56,189,248,.035), rgba(56,189,248,0) 65%);
         }
@@ -81,77 +81,37 @@
             content: "";
             position: absolute;
             inset: 10px 8px 10px 10px;
-            border: 1px dashed rgba(125,211,252,.26);
+            border: 1px dashed rgba(125,211,252,.20);
             border-radius: 18px;
-            box-shadow: inset 0 0 26px rgba(56,189,248,.035);
+            box-shadow: inset 0 0 26px rgba(56,189,248,.03);
             pointer-events: none;
         }
         #touch-aim-hint {
             position: absolute;
-            top: 40%;
+            top: 34%;
             right: 12px;
             transform: translateY(-50%);
-            max-width: 120px;
+            max-width: 146px;
             padding: 6px 8px;
-            border: 1px solid rgba(125,211,252,.42);
+            border: 1px solid rgba(125,211,252,.4);
             border-radius: 9px;
-            background: rgba(2, 12, 24, .58);
-            color: rgba(224,242,254,.88);
-            font: 800 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+            background: rgba(2, 12, 24, .50);
+            color: rgba(224,242,254,.84);
+            font: 800 9px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
             letter-spacing: .02em;
             text-align: center;
             pointer-events: none;
             text-shadow: 0 1px 4px rgba(0,0,0,.9);
-            writing-mode: horizontal-tb;
-            box-shadow: 0 0 12px rgba(56,189,248,.08);
+            box-shadow: 0 0 12px rgba(56,189,248,.06);
         }
-        #touch-aim-pad {
-            position: absolute;
-            left: 55%;
-            top: 42%;
-            width: 80px;
-            height: 80px;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            gap: 3px;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 2;
-        }
-        .aim-nudge {
-            pointer-events: auto;
+        /* 触屏模式禁止页面滚动，避免浏览器手势抢走视角操作 */
+        body.mobile-ui-active,
+        body.mobile-ui-active #game-canvas,
+        body.mobile-ui-active #hud,
+        body.mobile-ui-active #mobile-controls {
             touch-action: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid rgba(125,211,252,.58);
-            border-radius: 9px;
-            color: rgba(240,249,255,.96);
-            background: rgba(8, 22, 39, .64);
-            box-shadow: inset 0 0 8px rgba(56,189,248,.08), 0 2px 6px rgba(0,0,0,.25);
-            font: 900 15px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
-            user-select: none;
-            -webkit-user-select: none;
+            overscroll-behavior: none;
         }
-        .aim-nudge:active, .aim-nudge.pressing {
-            background: rgba(14,165,233,.58);
-            border-color: rgba(186,230,253,.95);
-            transform: scale(.94);
-        }
-        #aim-up { grid-column: 2; grid-row: 1; }
-        #aim-left { grid-column: 1; grid-row: 2; }
-        #aim-center {
-            grid-column: 2; grid-row: 2;
-            display: flex; align-items: center; justify-content: center;
-            color: rgba(52,211,153,.95);
-            border: 1px solid rgba(52,211,153,.45);
-            border-radius: 50%;
-            background: rgba(6, 35, 35, .54);
-            font-size: 11px;
-        }
-        #aim-right { grid-column: 3; grid-row: 2; }
-        #aim-down { grid-column: 2; grid-row: 3; }
 
         /* 通过控制系统模式 class 限定这些样式，只影响手机/平板；电脑布局不变 */
         body.mobile-ui-active #bottom-hud-panels { left: 7px !important; right: 7px !important; bottom: 6px !important; gap: 4px !important; }
@@ -172,7 +132,8 @@
         body.mobile-ui-active #weapon-switch-panel > div > div > div:first-child { font-size: 7px !important; line-height: 1.1 !important; }
         body.mobile-ui-active #weapon-switch-panel .font-bold { font-size: 9px !important; line-height: 1.15 !important; white-space: nowrap; }
         body.mobile-ui-active #mobile-controls .touch-btn { backdrop-filter: blur(4px); }
-        body.mobile-ui-active #touch-aim-hint { font-size: 9px; right: 8px; }
+        body.mobile-ui-active #mobile-action-stack .action-row:last-child #m-btn-fire { order: -1 !important; }
+        body.mobile-ui-active #mobile-action-stack .action-row:last-child #m-btn-switch { order: 5 !important; }
         body.mobile-ui-active #hud-top-buttons { gap: 3px !important; }
         body.mobile-ui-active #hud-top-buttons button { padding: 3px 5px !important; font-size: 8px !important; line-height: 1.1 !important; border-radius: 8px !important; }
 
@@ -190,9 +151,6 @@
             body.mobile-ui-active #mobile-controls #m-btn-fire { width: 66px !important; height: 66px !important; min-width: 66px !important; font-size: 12px !important; }
             body.mobile-ui-active #mobile-controls #m-btn-fire span:first-child { font-size: 19px !important; }
             body.mobile-ui-active #mobile-controls #m-btn-fire span:last-child { font-size: 10px !important; }
-            body.mobile-ui-active #touch-aim-pad { left: 55%; top: 43%; width: 70px; height: 70px; gap: 2px; }
-            body.mobile-ui-active .aim-nudge { border-radius: 7px; font-size: 13px; }
-            body.mobile-ui-active #touch-aim-hint { top: 32%; right: 10px; padding: 4px 6px; font-size: 8px; }
             body.mobile-ui-active #hud-top-buttons button { padding: 2px 4px !important; font-size: 7px !important; }
             body.mobile-ui-active #bottom-hud-panels { left: 6px !important; right: 6px !important; bottom: 4px !important; }
             body.mobile-ui-active #hp-panel, body.mobile-ui-active #ammo-panel { width: clamp(96px, 18vw, 155px) !important; padding: 4px 6px !important; }
@@ -201,8 +159,6 @@
         @media (max-width: 520px) {
             body.mobile-ui-active #joystick-zone { width: 108px !important; height: 108px !important; left: 10px !important; bottom: 96px !important; }
             body.mobile-ui-active #mobile-action-stack { right: 8px !important; bottom: 96px !important; }
-            body.mobile-ui-active #touch-aim-pad { left: 54%; top: 42%; }
-            body.mobile-ui-active #touch-aim-hint { right: 4px; font-size: 8px; }
         }
 
         /* 狙击高倍镜遮罩 */
@@ -419,16 +375,7 @@
 
             <!-- 右侧滑动瞄准区：拖动可转动视角，枪械模型带惯性跟随 -->
             <div id="touch-look-zone" class="absolute top-20 bottom-24 right-0 w-[58%] pointer-events-auto"></div>
-            <div id="touch-aim-hint">↔ 左右转向<br>↕ 上下瞄准<br>拖动屏幕或按箭头</div>
-            <!-- 视角微调方向键：按住可连续调整视角，方便看不清滑动区时操作 -->
-            <div id="touch-aim-pad" aria-label="视角微调方向键">
-                <button type="button" class="aim-nudge" id="aim-up" data-aim-x="0" data-aim-y="-10" aria-label="向上瞄准">▲</button>
-                <button type="button" class="aim-nudge" id="aim-left" data-aim-x="-10" data-aim-y="0" aria-label="向左转向">◀</button>
-                <div id="aim-center" aria-hidden="true">◎</div>
-                <button type="button" class="aim-nudge" id="aim-right" data-aim-x="10" data-aim-y="0" aria-label="向右转向">▶</button>
-                <button type="button" class="aim-nudge" id="aim-down" data-aim-x="0" data-aim-y="10" aria-label="向下瞄准">▼</button>
-            </div>
-
+            <div id="touch-aim-hint">全屏空白处拖动瞄准<br>↔ 左右转向　↕ 上下调整<br>避开摇杆与功能按钮</div>
             <!-- 右下：射击 / 开镜倍镜 / 换弹 / 跳跃 / 投雷 / 近战 / 切枪 / 补给 按钮群 -->
             <div id="mobile-action-stack" class="absolute bottom-24 right-5 pointer-events-auto flex flex-col items-end gap-2.5">
                 <div class="action-row flex items-center gap-2.5">
@@ -446,8 +393,9 @@
                     </button>
                 </div>
                 <div class="action-row flex items-center gap-3">
-                    <button id="m-btn-switch" class="touch-btn w-14 h-14 text-xs border-sky-400/60">
-                        <span>🔄</span><span class="text-[10px]">切枪</span>
+                    <!-- 开火键占用原切枪键位置；切枪移到原开火键位置 -->
+                    <button id="m-btn-fire" class="touch-btn w-20 h-20 text-sm bg-rose-600/75 border-2 border-rose-300 shadow-[0_0_25px_rgba(244,63,94,0.5)]">
+                        <span class="text-xl">🔥</span><span class="text-xs font-black">开火</span>
                     </button>
                     <button id="m-btn-reload" class="touch-btn w-14 h-14 text-xs">
                         <span>🔋</span><span class="text-[10px]">换弹</span>
@@ -458,8 +406,8 @@
                     <button id="m-btn-jump" class="touch-btn w-14 h-14 text-xs">
                         <span>⏫</span><span class="text-[10px]">跳跃</span>
                     </button>
-                    <button id="m-btn-fire" class="touch-btn w-20 h-20 text-sm bg-rose-600/75 border-2 border-rose-300 shadow-[0_0_25px_rgba(244,63,94,0.5)]">
-                        <span class="text-xl">🔥</span><span class="text-xs font-black">开火</span>
+                    <button id="m-btn-switch" class="touch-btn w-14 h-14 text-xs border-sky-400/60">
+                        <span>🔄</span><span class="text-[10px]">切枪</span>
                     </button>
                 </div>
             </div>
@@ -2038,7 +1986,18 @@
                         pos.x += (dx / dist) * overlap;
                         pos.z += (dz / dist) * overlap;
                     } else {
-                        pos.x = box.minX - radius;
+                        // 若角色中心已进入碰撞盒，选择最近的边推出去。
+                        // 旧代码永远推到 minX，会让玩家撞上南北围墙时瞬间传送到地图外。
+                        const faceDistances = [
+                            { axis: 'x', edge: box.minX - radius, distance: Math.abs(pos.x - box.minX) },
+                            { axis: 'x', edge: box.maxX + radius, distance: Math.abs(box.maxX - pos.x) },
+                            { axis: 'z', edge: box.minZ - radius, distance: Math.abs(pos.z - box.minZ) },
+                            { axis: 'z', edge: box.maxZ + radius, distance: Math.abs(box.maxZ - pos.z) }
+                        ];
+                        faceDistances.sort((a, b) => a.distance - b.distance);
+                        const nearestFace = faceDistances[0];
+                        if (nearestFace.axis === 'x') pos.x = nearestFace.edge;
+                        else pos.z = nearestFace.edge;
                     }
                 }
             }
@@ -3698,6 +3657,8 @@
         let isGrounded = true;
         const PLAYER_RADIUS = 0.55;
         const EYE_HEIGHT = 1.7;
+        // 场景围墙内沿约为 ±84；硬边界留出玩家半径，防止穿墙/碰撞异常后跑出地图。
+        const PLAYER_MAP_LIMIT = 83.35;
 
         // 切换电脑 / 手机平板系统模式
         function setSystemMode(mode) {
@@ -3857,12 +3818,11 @@
             joystickInput.y = -dy / maxR;
         }
 
-        // 右侧触屏区域：使用 Pointer Events + pointer capture，解决滑动出区域后丢失输入的问题。
-        // 摄像机转向会同步影响子弹射线；枪模再加少量反向惯性，让枪口跟随操作有可见反馈。
-        const lookZone = document.getElementById('touch-look-zone');
+        // 手机/平板：整个游戏画面的空白区域都可拖动瞄准。
+        // 摇杆、功能按钮、武器栏和弹窗不参与瞄准，避免操作冲突。
         let lookPointerId = null;
         let lastLookX = 0, lastLookY = 0;
-        lookZone.style.touchAction = 'none';
+        let lookCaptureTarget = null;
 
         function applyTouchLookDelta(dx, dy) {
             if (!gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
@@ -3871,19 +3831,33 @@
             yawObject.rotation.y -= dx * sens;
             pitchObject.rotation.x -= dy * sens;
             pitchObject.rotation.x = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitchObject.rotation.x));
+            // 相机方向直接决定射击方向；枪模额外带轻微惯性以显示枪口跟随。
             weaponAimLag.x = Math.max(-0.16, Math.min(0.16, weaponAimLag.x + dx * 0.00125));
             weaponAimLag.y = Math.max(-0.12, Math.min(0.12, weaponAimLag.y + dy * 0.0010));
         }
 
-        lookZone.addEventListener('pointerdown', (e) => {
-            if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || e.pointerType === 'mouse') return;
+        function isTouchAimBlocked(target) {
+            if (!(target instanceof Element)) return false;
+            return !!target.closest(
+                '#joystick-zone, #mobile-action-stack, #bottom-hud-panels, #hud-top-buttons, ' +
+                '#menu-modal, #upgrade-modal, #pause-overlay, button, .touch-btn, .option-card, ' +
+                'input, select, textarea, [data-no-aim="true"]'
+            );
+        }
+
+        function startScreenAim(e) {
+            if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
+            if (lookPointerId !== null || isTouchAimBlocked(e.target)) return;
+            // 全屏空白区域生效；功能控件和左侧移动摇杆会优先保留自己的手势。
             e.preventDefault();
             lookPointerId = e.pointerId;
             lastLookX = e.clientX;
             lastLookY = e.clientY;
-            try { lookZone.setPointerCapture(e.pointerId); } catch (err) {}
-        });
-        lookZone.addEventListener('pointermove', (e) => {
+            lookCaptureTarget = e.target instanceof Element ? e.target : document.documentElement;
+            try { lookCaptureTarget.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+
+        function moveScreenAim(e) {
             if (e.pointerId !== lookPointerId) return;
             e.preventDefault();
             const dx = e.clientX - lastLookX;
@@ -3891,62 +3865,49 @@
             lastLookX = e.clientX;
             lastLookY = e.clientY;
             applyTouchLookDelta(dx, dy);
-        });
-        function endTouchLook(e) {
-            if (e && e.pointerId !== undefined && e.pointerId !== lookPointerId) return;
-            if (lookPointerId !== null) {
-                try { if (lookZone.hasPointerCapture(lookPointerId)) lookZone.releasePointerCapture(lookPointerId); } catch (err) {}
-            }
-            lookPointerId = null;
         }
-        lookZone.addEventListener('pointerup', endTouchLook);
-        lookZone.addEventListener('pointercancel', endTouchLook);
-        lookZone.addEventListener('lostpointercapture', endTouchLook);
 
-        // 视角方向微调按钮：轻按微调，按住连续转向；不影响左侧移动摇杆。
-        let aimNudgeTimer = null;
-        let activeAimButton = null;
-        function stopAimNudge() {
-            if (aimNudgeTimer !== null) {
-                clearInterval(aimNudgeTimer);
-                aimNudgeTimer = null;
+        function stopScreenAim(e) {
+            if (e && e.pointerId !== undefined && e.pointerId !== lookPointerId) return;
+            const oldPointerId = lookPointerId;
+            const oldTarget = lookCaptureTarget;
+            lookPointerId = null;
+            lookCaptureTarget = null;
+            if (oldPointerId !== null && oldTarget) {
+                try { if (oldTarget.hasPointerCapture(oldPointerId)) oldTarget.releasePointerCapture(oldPointerId); } catch (err) {}
             }
-            if (activeAimButton) activeAimButton.classList.remove('pressing');
-            activeAimButton = null;
         }
-        document.querySelectorAll('.aim-nudge').forEach(btn => {
-            btn.addEventListener('pointerdown', (e) => {
-                if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
-                e.preventDefault();
-                stopAimNudge();
-                activeAimButton = btn;
-                btn.classList.add('pressing');
-                const dx = Number(btn.dataset.aimX || 0);
-                const dy = Number(btn.dataset.aimY || 0);
-                applyTouchLookDelta(dx, dy);
-                try { btn.setPointerCapture(e.pointerId); } catch (err) {}
-                aimNudgeTimer = setInterval(() => applyTouchLookDelta(dx * 0.7, dy * 0.7), 55);
-            });
-            btn.addEventListener('pointerup', stopAimNudge);
-            btn.addEventListener('pointercancel', stopAimNudge);
-            btn.addEventListener('lostpointercapture', stopAimNudge);
-            btn.addEventListener('contextmenu', e => e.preventDefault());
-        });
-        window.addEventListener('pointerup', stopAimNudge);
-        window.addEventListener('blur', stopAimNudge);
+
+        // 捕获阶段接收全屏输入；即使手指拖出原来的瞄准区，也不会丢失视角操作。
+        document.addEventListener('pointerdown', startScreenAim, { capture: true, passive: false });
+        document.addEventListener('pointermove', moveScreenAim, { capture: true, passive: false });
+        document.addEventListener('pointerup', stopScreenAim, true);
+        document.addEventListener('pointercancel', stopScreenAim, true);
+        document.addEventListener('lostpointercapture', stopScreenAim, true);
+        window.addEventListener('blur', () => stopScreenAim());
 
         // 移动端功能按钮绑定
         const mFireBtn = document.getElementById('m-btn-fire');
-        mFireBtn.addEventListener('touchstart', (e) => {
+        let mobileFirePointerId = null;
+        function startMobileFire(e) {
+            if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
             e.preventDefault();
+            mobileFirePointerId = e.pointerId;
             sound.init();
             gameState.mouseDown = true;
             tryPlayerShoot(performance.now() / 1000);
-        }, { passive: false });
-        mFireBtn.addEventListener('touchend', (e) => {
-            e.preventDefault();
+            try { mFireBtn.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+        function stopMobileFire(e) {
+            if (e && e.pointerId !== undefined && mobileFirePointerId !== null && e.pointerId !== mobileFirePointerId) return;
+            mobileFirePointerId = null;
             gameState.mouseDown = false;
-        }, { passive: false });
+        }
+        mFireBtn.addEventListener('pointerdown', startMobileFire, { passive: false });
+        mFireBtn.addEventListener('pointerup', stopMobileFire);
+        mFireBtn.addEventListener('pointercancel', stopMobileFire);
+        mFireBtn.addEventListener('lostpointercapture', stopMobileFire);
+        window.addEventListener('blur', () => stopMobileFire());
 
         document.getElementById('m-btn-ads').addEventListener('touchstart', (e) => {
             e.preventDefault();
@@ -4146,6 +4107,15 @@
             }
 
             resolveSphereAABBCollisions(yawObject.position, PLAYER_RADIUS, yawObject.position.y - EYE_HEIGHT);
+
+            // 最终硬限制：即使碰撞盒处理出现边界情况，玩家也无法走出地图。
+            yawObject.position.x = THREE.MathUtils.clamp(yawObject.position.x, -PLAYER_MAP_LIMIT, PLAYER_MAP_LIMIT);
+            yawObject.position.z = THREE.MathUtils.clamp(yawObject.position.z, -PLAYER_MAP_LIMIT, PLAYER_MAP_LIMIT);
+            if (!Number.isFinite(yawObject.position.x) || !Number.isFinite(yawObject.position.z) || !Number.isFinite(yawObject.position.y)) {
+                yawObject.position.set(0, EYE_HEIGHT, 0);
+                verticalVelocity = 0;
+                isGrounded = true;
+            }
         }
 
         function animate() {
