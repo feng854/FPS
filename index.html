@@ -63,6 +63,34 @@
             z-index: 15;
         }
 
+        /* 触屏瞄准区明确接收手指拖动；避免浏览器滚动/缩放抢走输入 */
+        #mobile-controls { z-index: 25; }
+        #touch-look-zone {
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: contain;
+        }
+        #mobile-controls .touch-btn,
+        #joystick-zone { touch-action: none; }
+        #touch-aim-hint {
+            position: absolute;
+            top: 50%;
+            right: 1rem;
+            transform: translateY(-50%);
+            color: rgba(226, 232, 240, 0.34);
+            font: 700 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+            letter-spacing: .08em;
+            pointer-events: none;
+            writing-mode: vertical-rl;
+            text-shadow: 0 1px 4px rgba(0,0,0,.8);
+        }
+        @media (max-width: 520px) {
+            #touch-aim-hint { right: .35rem; font-size: 9px; }
+            #joystick-zone { width: 122px !important; height: 122px !important; left: 12px !important; bottom: 108px !important; }
+            #mobile-controls .touch-btn { backdrop-filter: blur(4px); }
+        }
+
         /* 狙击高倍镜遮罩 */
         #sniper-scope {
             position: fixed;
@@ -275,8 +303,9 @@
                 <span class="absolute bottom-1.5 text-[9px] font-mono text-slate-300/80 pointer-events-none">MOVE 摇杆</span>
             </div>
 
-            <!-- 右侧：划屏转向触控区（占右半屏底层） -->
+            <!-- 右侧滑动瞄准区：拖动可转动视角，枪械模型带惯性跟随 -->
             <div id="touch-look-zone" class="absolute top-20 bottom-24 right-0 w-[58%] pointer-events-auto"></div>
+            <div id="touch-aim-hint">右侧滑动 · 转向 / 瞄准</div>
 
             <!-- 右下：射击 / 开镜倍镜 / 换弹 / 跳跃 / 投雷 / 近战 / 切枪 / 补给 按钮群 -->
             <div class="absolute bottom-24 right-5 pointer-events-auto flex flex-col items-end gap-2.5">
@@ -633,7 +662,7 @@
                     <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
                         <div class="font-bold text-slate-200">💡 战术操作提示：</div>
                         <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，<b>右键</b>开镜/狙击倍镜，<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
-                        <div>• 手机/平板端：左下摇杆移动，右侧划屏瞄准，右下角一键开镜、射击、切枪、投雷。</div>
+                        <div>• 手机/平板端：左下摇杆移动；右侧空白区域上下左右滑动即可转向/瞄准，枪模会随操作轻微跟随；右下角一键开镜、射击、切枪、投雷。</div>
                     </div>
                 </div>
 
@@ -1150,6 +1179,8 @@
         const lowGroundSmokes = [];   // 贴地漂浮尘埃与低矮烟雾
         const roofSearchlights = [];  // 远景高楼幸存者手电扫射光束
         const distantSilhouettes = []; // 街口与楼顶模糊丧尸剪影
+        const smokeColumnPieces = []; // 远处持续升腾的浓黑烟柱
+        const fireSmokePuffs = [];    // 燃烧油桶上升的烟团
 
         const canvas = document.getElementById('game-canvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -1302,8 +1333,51 @@
         /**************************************************************
          * 4. index(1).html 原版日光氛围与城市街区场景
          **************************************************************/
-        function addStreetPracticalLight(position, intensity = 1.15, distance = 15) {
-            const lamp = new THREE.PointLight(0xffad62, intensity, distance, 2);
+        function createSunsetSkyDome() {
+            // 程序化天空：上方灰蓝、地平线橘金，左侧有夕阳光晕，无外部贴图依赖。
+            const skyGeometry = new THREE.SphereGeometry(235, 40, 24);
+            const skyMaterial = new THREE.ShaderMaterial({
+                side: THREE.BackSide,
+                depthWrite: false,
+                uniforms: {},
+                vertexShader: `
+                    varying vec3 vSkyDirection;
+                    void main() {
+                        vSkyDirection = normalize(position);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vSkyDirection;
+                    void main() {
+                        vec3 d = normalize(vSkyDirection);
+                        float h = d.y;
+                        vec3 horizon = vec3(0.42, 0.39, 0.36);
+                        vec3 mid = vec3(0.26, 0.34, 0.42);
+                        vec3 top = vec3(0.075, 0.12, 0.20);
+                        vec3 col = mix(horizon, mid, smoothstep(-0.10, 0.34, h));
+                        col = mix(col, top, smoothstep(0.22, 0.88, h));
+                        float warmBand = 1.0 - smoothstep(-0.14, 0.20, h);
+                        col = mix(col, vec3(0.78, 0.38, 0.19), warmBand * 0.34);
+                        vec3 sunDir = normalize(vec3(-0.66, 0.15, -0.73));
+                        float sunDot = max(dot(d, sunDir), 0.0);
+                        float halo = pow(sunDot, 18.0);
+                        float disc = smoothstep(0.9975, 0.9992, sunDot);
+                        col += vec3(1.0, 0.35, 0.10) * halo * 0.42;
+                        col += vec3(1.0, 0.57, 0.26) * disc * 1.5;
+                        gl_FragColor = vec4(col, 1.0);
+                    }
+                `
+            });
+            const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+            sky.name = 'ProceduralSunsetSky';
+            sky.renderOrder = -1000;
+            sky.frustumCulled = false;
+            scene.add(sky);
+        }
+
+        function addStreetPracticalLight(position, intensity = 1.15, distance = 15, color = 0xffad62) {
+            const lamp = new THREE.PointLight(color, intensity, distance, 2);
             lamp.position.set(position[0], position[1], position[2]);
             lamp.castShadow = false;
             scene.add(lamp);
@@ -1311,12 +1385,13 @@
         }
 
         function setupLights() {
-            // 冷灰天空漫射光、低角度夕阳与克制的环境补光
-            scene.add(new THREE.HemisphereLight(0xc5d2d8, 0x34312c, 1.25));
-            scene.add(new THREE.AmbientLight(0x9aa8b2, 0.28));
+            createSunsetSkyDome();
+            // 暖金夕阳主光 + 冷蓝环境补光；保持中间调可读，不额外压暗画面。
+            scene.add(new THREE.HemisphereLight(0xc5d2d8, 0x464039, 1.28));
+            scene.add(new THREE.AmbientLight(0x9aa8b2, 0.32));
 
-            const sun = new THREE.DirectionalLight(0xffc58a, 2.25);
-            sun.position.set(-48, 18, 32); // 低角度夕阳，形成较长阴影
+            const sun = new THREE.DirectionalLight(0xffc58a, 2.3);
+            sun.position.set(-48, 18, 32);
             sun.castShadow = true;
             sun.shadow.mapSize.set(2048, 2048);
             sun.shadow.camera.near = 1;
@@ -1330,14 +1405,15 @@
             sun.shadow.radius = 5;
             scene.add(sun);
 
-            const coolFill = new THREE.DirectionalLight(0x9db8cb, 0.38);
+            const coolFill = new THREE.DirectionalLight(0x9db8cb, 0.46);
             coolFill.position.set(40, 28, -42);
             scene.add(coolFill);
-            // 分布式暖色路灯：仅少量点光源，降低移动端/集显负担
+            // 路灯暖光与一盏冷蓝应急灯，构成暖冷反差。
             for (let i = -2; i <= 2; i++) {
-                addStreetPracticalLight([i * 22 + 8, 4.6, -18], 0.8, 13);
-                addStreetPracticalLight([i * 22 - 8, 4.6, 24], 0.65, 11);
+                addStreetPracticalLight([i * 22 + 8, 4.6, -18], 0.8, 13, 0xffad62);
+                addStreetPracticalLight([i * 22 - 8, 4.6, 24], 0.65, 11, 0xffc47a);
             }
+            addStreetPracticalLight([-11.5, 5.2, -42], 1.25, 23, 0x77baff);
         }
 
         // 生成程序化带窗户纹理的建筑材质
@@ -1458,13 +1534,31 @@
             roadV.position.y = 0.02;
             scene.add(roadV);
 
-            // 破损感道路标线与人行道边缘，增强街区尺度感
-            const lineMat = new THREE.MeshStandardMaterial({ color: 0xd8d0b4, roughness: 0.9 });
-            for (let z = -78; z <= 78; z += 9) {
-                const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 4.2), lineMat);
-                dash.rotation.x = -Math.PI / 2; dash.position.set(0, 0.035, z); scene.add(dash);
-                const dash2 = dash.clone(); dash2.position.x = 0.55; dash2.material = new THREE.MeshStandardMaterial({ color: 0x6b7072, roughness: 1 }); scene.add(dash2);
+            // 褪色双黄中心线：十字主干道均有磨损标线，路面仍保留裂纹和灰尘。
+            const yellowLineMat = new THREE.MeshStandardMaterial({ color: 0xb79a42, roughness: 0.92, metalness: 0.0 });
+            const wornLineMat = new THREE.MeshStandardMaterial({ color: 0x756b46, roughness: 0.98 });
+            [-0.19, 0.19].forEach(x => {
+                const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 176), yellowLineMat);
+                stripe.rotation.x = -Math.PI / 2; stripe.position.set(x, 0.034, 0); scene.add(stripe);
+            });
+            [-0.19, 0.19].forEach(z => {
+                const stripe = new THREE.Mesh(new THREE.PlaneGeometry(176, 0.12), yellowLineMat);
+                stripe.rotation.x = -Math.PI / 2; stripe.position.set(0, 0.034, z); scene.add(stripe);
+            });
+            // 划痕和掉漆段打断整齐的标线，避免像新铺道路。
+            for (let i = 0; i < 34; i++) {
+                const z = -82 + i * 4.9;
+                if (i % 3 !== 1) {
+                    const worn = new THREE.Mesh(new THREE.PlaneGeometry(0.025 + Math.random() * 0.055, 0.5 + Math.random() * 1.4), wornLineMat);
+                    worn.rotation.x = -Math.PI / 2; worn.position.set((Math.random() > 0.5 ? -0.19 : 0.19) + (Math.random() - 0.5) * 0.08, 0.036, z); scene.add(worn);
+                }
             }
+            // 夕阳在局部潮湿沥青和油渍上的柔和反光。
+            const wetPatchMat = new THREE.MeshStandardMaterial({ color: 0x9a8870, roughness: 0.28, metalness: 0.12, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+            [[-2.8, 9, 2.5, 5.2], [2.1, -12, 3.3, 4.4], [-4.5, 31, 2.1, 3.7], [4.2, -35, 2.4, 4.8], [0.8, 51, 3.6, 5.1]].forEach(([x,z,w,h],i) => {
+                const patch = new THREE.Mesh(new THREE.PlaneGeometry(w,h), wetPatchMat);
+                patch.rotation.x = -Math.PI / 2; patch.rotation.z = (i % 2 ? 0.08 : -0.06); patch.position.set(x, 0.031 + i * 0.0002, z); scene.add(patch);
+            });
             const curbMat = new THREE.MeshStandardMaterial({ color: 0x969b9b, roughness: 0.95 });
             [-9.3, 9.3].forEach(x => {
                 const curb = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 180), curbMat);
@@ -1478,6 +1572,45 @@
             addColliderBox(0, 4, arenaHalf, 172, 8, 2, wallMat);
             addColliderBox(-arenaHalf, 4, 0, 2, 8, 172, wallMat);
             addColliderBox(arenaHalf, 4, 0, 2, 8, 172, wallMat);
+
+            // 围墙顶部的锈蚀铁丝网：远景轮廓清晰，但使用少量几何体控制移动端负担。
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x877d70, transparent: true, opacity: 0.82 });
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x514c45, roughness: 0.88, metalness: 0.48 });
+            function addWireLine(points) {
+                const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+                const line = new THREE.Line(geo, wireMat);
+                scene.add(line);
+            }
+            const wireHalf = 84.2;
+            // 三道纵向钢丝
+            for (const y of [8.35, 8.78, 9.12]) {
+                addWireLine([[-wireHalf, y, -wireHalf], [wireHalf, y, -wireHalf]]);
+                addWireLine([[-wireHalf, y, wireHalf], [wireHalf, y, wireHalf]]);
+                addWireLine([[-wireHalf, y, -wireHalf], [-wireHalf, y, wireHalf]]);
+                addWireLine([[wireHalf, y, -wireHalf], [wireHalf, y, wireHalf]]);
+            }
+            // 支柱、交叉刺丝与锈斑连接件
+            for (let p = -80; p <= 80; p += 8) {
+                const sides = [[p, -wireHalf, 0], [p, wireHalf, 0], [-wireHalf, p, 1], [wireHalf, p, 1]];
+                sides.forEach(([a,b,axis]) => {
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.2, 6), poleMat);
+                    post.position.set(axis === 0 ? a : b, 8.58, axis === 0 ? b : a);
+                    post.rotation.z = 0.02;
+                    scene.add(post);
+                });
+                if (p % 16 === 0) {
+                    for (const y of [8.52, 8.94]) {
+                        addWireLine([[p - 0.22, y - 0.16, -wireHalf - 0.01], [p + 0.22, y + 0.16, -wireHalf - 0.01]]);
+                        addWireLine([[p - 0.22, y + 0.16, -wireHalf - 0.01], [p + 0.22, y - 0.16, -wireHalf - 0.01]]);
+                        addWireLine([[p - 0.22, y - 0.16, wireHalf + 0.01], [p + 0.22, y + 0.16, wireHalf + 0.01]]);
+                        addWireLine([[p - 0.22, y + 0.16, wireHalf + 0.01], [p + 0.22, y - 0.16, wireHalf + 0.01]]);
+                        addWireLine([[-wireHalf - 0.01, y - 0.16, p - 0.22], [-wireHalf - 0.01, y + 0.16, p + 0.22]]);
+                        addWireLine([[-wireHalf - 0.01, y + 0.16, p - 0.22], [-wireHalf - 0.01, y - 0.16, p + 0.22]]);
+                        addWireLine([[wireHalf + 0.01, y - 0.16, p - 0.22], [wireHalf + 0.01, y + 0.16, p + 0.22]]);
+                        addWireLine([[wireHalf + 0.01, y + 0.16, p - 0.22], [wireHalf + 0.01, y - 0.16, p + 0.22]]);
+                    }
+                }
+            }
 
             // 城市大楼布局坐标 (避开中心出生点 [0,0])
             const buildingColors = ['#334155', '#1e293b', '#3b4252', '#27303f', '#3f3f46'];
@@ -1670,7 +1803,25 @@
 
                 const fireLight = addStreetPracticalLight([fx, 1.65, fz], 2.2, 22, 0xff6a1a);
                 flickerFires.push({ light: fireLight, mesh: flame, phase: i * 1.7 });
+                // 每个燃烧点配少量上升烟团，火光不再像孤立的静态圆锥。
+                for (let puff = 0; puff < 2; puff++) {
+                    const smokeMatFire = new THREE.MeshBasicMaterial({ map: getWeatheredTexture('smoke_puff'), color: 0x242323, transparent: true, opacity: 0.24, depthWrite: false, side: THREE.DoubleSide });
+                    const smoke = new THREE.Mesh(new THREE.PlaneGeometry(1.8 + puff * 0.9, 2.2 + puff * 0.8), smokeMatFire);
+                    smoke.position.set(fx + (Math.random() - 0.5) * 0.45, 1.5 + puff * 1.1, fz);
+                    scene.add(smoke);
+                    fireSmokePuffs.push({ mesh: smoke, baseX: fx, baseZ: fz, baseY: smoke.position.y, phase: i * 1.2 + puff * 2.4, speed: 0.45 + puff * 0.18, lifeHeight: 4.8 });
+                }
             });
+
+            // 道路尽头浓黑烟柱：层叠半透明烟片缓慢上涌，让远景更有纵深。
+            const darkSmokeTex = getWeatheredTexture('smoke_puff');
+            for (let i = 0; i < 7; i++) {
+                const mat = new THREE.MeshBasicMaterial({ map: darkSmokeTex, color: 0x282b31, transparent: true, opacity: 0.30 - i * 0.018, depthWrite: false, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2 + i * 1.5, 4.5 + i * 0.7), mat);
+                mesh.position.set(-8.5 + Math.sin(i * 1.7) * 1.5, 7.5 + i * 3.1, -76.8 - i * 0.18);
+                scene.add(mesh);
+                smokeColumnPieces.push({ mesh, baseX: mesh.position.x, baseY: mesh.position.y, baseZ: mesh.position.z, phase: i * 1.1, speed: 0.22 + i * 0.025 });
+            }
 
             // 街道两侧漂浮的低矮烟雾与尘埃层
             const smokeTex = getWeatheredTexture('smoke_puff');
@@ -2090,6 +2241,20 @@
             }
         }
 
+        // 毒胚/母体专用腐蚀云：绿色半透明气泡向外扩散，而非只有硬质火花。
+        function spawnCorrosiveCloud(centerPos, count = 22, spread = 2.4) {
+            for (let i = 0; i < count; i++) {
+                const radius = 0.10 + Math.random() * 0.20;
+                const mat = new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xa3e635 : 0x65a30d, transparent: true, opacity: 0.35 + Math.random() * 0.18, depthWrite: false });
+                const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 6), mat);
+                mesh.position.copy(centerPos).add(new THREE.Vector3((Math.random() - 0.5) * 0.9, Math.random() * 1.3, (Math.random() - 0.5) * 0.9));
+                scene.add(mesh);
+                const vel = new THREE.Vector3((Math.random() - 0.5) * spread, 0.25 + Math.random() * 1.35, (Math.random() - 0.5) * spread);
+                const life = 0.62 + Math.random() * 0.62;
+                particles.push({ mesh, vel, life, maxLife: life, material: mat, gravity: 1.2, expandRate: 0.7 });
+            }
+        }
+
         function tryPlayerShoot(nowSeconds) {
             if (!gameState.isRunning || gameState.isPaused || gameState.isGameOver || gameState.isReloading || gameState.isUpgradeOpen) return;
 
@@ -2130,7 +2295,11 @@
             const barrelMeshes = explosiveBarrels.filter(b => !b.exploded).map(b => b.mesh);
             const allTargets = obstacleMeshes.concat(enemyHitMeshes, barrelMeshes);
 
-            const muzzleWorld = new THREE.Vector3(0.22, -0.15, -0.6).applyMatrix4(camera.matrixWorld);
+            // 先更新层级矩阵，再从真实枪口火光位置生成弹道，保证触屏瞄准/枪身惯性时枪口与弹道一致。
+            scene.updateMatrixWorld(true);
+            const muzzleWorld = gunGroup && gunGroup.userData.muzzleFlash
+                ? gunGroup.userData.muzzleFlash.getWorldPosition(new THREE.Vector3())
+                : new THREE.Vector3(0.22, -0.15, -0.6).applyMatrix4(camera.matrixWorld);
             let hitAnyEnemy = false;
             let killedEnemy = false;
             const spreadFactor = gameState.isADS ? 0.18 : 1.0;
@@ -2161,11 +2330,17 @@
                     if (enemyRef && !enemyRef.dead) {
                         hitAnyEnemy = true;
                         const isHeadshot = hit.object.userData.isHead === true;
-                        const dmg = isHeadshot ? Math.round(weapon.damage * 1.75) : weapon.damage;
-                        spawnFloatingDamage(hit.point, dmg, isHeadshot);
-                        const died = enemyRef.takeDamage(dmg, isHeadshot, hit.object);
+                        const isBloaterWeakPoint = enemyRef.zombieType === 'bloater' && (hit.object === enemyRef.bellyMesh || hit.object.userData.isBloaterWeakPoint === true);
+                        const shownDamage = isHeadshot
+                            ? Math.round(weapon.damage * 1.75)
+                            : (isBloaterWeakPoint ? Math.round(weapon.damage * 1.65) : weapon.damage);
+                        spawnFloatingDamage(hit.point, shownDamage, isHeadshot || isBloaterWeakPoint);
+                        // 普通部位伤害仍由敌人自己的护甲/弱点机制结算，避免重复乘算。
+                        const damageForHealth = isHeadshot ? shownDamage : weapon.damage;
+                        const died = enemyRef.takeDamage(damageForHealth, isHeadshot, hit.object);
                         if (died) killedEnemy = true;
-                        spawnImpactSparks(hit.point, 0xf43f5e, isHeadshot ? 12 : 7);
+                        const impactColor = enemyRef.zombieType === 'armored' && !isHeadshot ? 0xf59e0b : (isHeadshot ? 0xfbbf24 : 0xf43f5e);
+                        spawnImpactSparks(hit.point, impactColor, enemyRef.zombieType === 'armored' && !isHeadshot ? 10 : (isHeadshot ? 12 : 7));
                     } else {
                         spawnImpactSparks(hit.point, 0xfbbf24, 4);
                     }
@@ -2424,7 +2599,20 @@
                     const bellyMat=new THREE.MeshStandardMaterial({color:0x65724b,roughness:0.96,metalness:0.0,emissive:0x18230a,emissiveIntensity:0.12});
                     const belly=addCelPart(this.group,new THREE.SphereGeometry(0.34,20,16),bellyMat,[0,0.98,0.16],null,[1.15,1.0,0.9],1.0,bodyHitData);this.hitParts.push(belly);this.bellyMesh=belly;
                     const veinMat=new THREE.MeshStandardMaterial({color:0x39492d,roughness:0.9});
-                    for(let k=0;k<10;k++){const vein=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.012,0.18+Math.random()*0.2,5),veinMat);vein.position.set((Math.random()-.5)*0.42,0.94+Math.random()*0.25,0.43);vein.rotation.z=(Math.random()-.5)*1.1;this.group.add(vein);}
+                    const pustuleMat=new THREE.MeshStandardMaterial({color:0x9ba83d,emissive:0x405414,emissiveIntensity:0.44,roughness:0.42});
+                    for(let k=0;k<10;k++){
+                        const vein=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.012,0.18+Math.random()*0.2,5),veinMat);
+                        vein.position.set((Math.random()-.5)*0.42,0.94+Math.random()*0.25,0.43); vein.rotation.z=(Math.random()-.5)*1.1; this.group.add(vein);
+                    }
+                    // 腹部青绿色病毒脓包，命中该区域会产生暴击反馈并承受额外伤害。
+                    for(let k=0;k<9;k++){
+                        const a=(k/9)*Math.PI*2;
+                        const pustule=addCelPart(this.group,new THREE.SphereGeometry(0.055+(k%3)*0.012,10,8),pustuleMat,[Math.cos(a)*0.25,0.98+Math.sin(a*2)*0.15,0.405],null,[1,0.95,0.55],1.0,bodyHitData);
+                        // 脓包本身加入命中列表，玩家瞄准可见的青绿色弱点即可触发暴击。
+                        pustule.userData = { enemyRef: this, isHead: false, isBloaterWeakPoint: true };
+                        this.hitParts.push(pustule);
+                        this.pustules.push(pustule);
+                    }
                 }
 
                 // 复用当前版本的血条组件，兼容新版 AI 伤害与 HUD 更新逻辑
@@ -2659,7 +2847,7 @@
             takeDamage(amount, isHead = false, hitObject = null) {
                 if (this.dead) return false;
                 if (!isHead && this.stats.defense > 0) amount *= (1 - this.stats.defense);
-                if (this.zombieType === 'bloater' && hitObject === this.bellyMesh) amount *= 1.65;
+                if (this.zombieType === 'bloater' && (hitObject === this.bellyMesh || hitObject?.userData?.isBloaterWeakPoint === true)) amount *= 1.65;
                 this.hp = Math.max(0, this.hp - amount);
 
                 // 二阶段狂暴暴君受伤充血红光强化
@@ -2712,9 +2900,10 @@
                 updateHUD();
 
                 const fallInterval = setInterval(() => {
-                    this.group.rotation.x -= 0.16;
+                    // 局部正 Z 为感染者正面，绕 X 正向旋转使尸体朝前扑倒。
+                    this.group.rotation.x = Math.min(Math.PI / 2, this.group.rotation.x + 0.16);
                     this.group.position.y = Math.max(-0.4, this.group.position.y - 0.06);
-                    if (this.group.rotation.x <= -Math.PI / 2) {
+                    if (this.group.rotation.x >= Math.PI / 2) {
                         clearInterval(fallInterval);
                         setTimeout(() => {
                             scene.remove(this.group);
@@ -2783,7 +2972,9 @@
                     if (this.zombieType === 'boss_matriarch' && this.specialTimer <= 0) {
                         this.specialTimer = 6.5;
                         sound.playZombieSound('boss_matriarch', 'alert', distToPlayer);
-                        spawnImpactSparks(this.group.position.clone().add(new THREE.Vector3(0, 2.0, 0)), 0xa855f7, 22);
+                        const toxinOrigin = this.group.position.clone().add(new THREE.Vector3(0, 2.0, 0));
+                        spawnImpactSparks(toxinOrigin, 0x84cc16, 16);
+                        spawnCorrosiveCloud(toxinOrigin, 28, 3.4);
                         if (enemies.filter(e => !e.dead && !e.isBoss).length < MAX_NORMAL_ZOMBIES + 3) {
                             spawnSingleEnemy('runner');
                         }
@@ -2833,8 +3024,13 @@
             explodeBloater(distToPlayer) {
                 if (this.dead) return;
                 const origin = this.group.position.clone().add(new THREE.Vector3(0, 1, 0));
-                spawnImpactSparks(origin, 0x84cc16, 26);
-                if (distToPlayer < 4.8) damagePlayer(Math.round(28 * (1 - distToPlayer / 6)));
+                spawnImpactSparks(origin, 0x84cc16, 22);
+                spawnCorrosiveCloud(origin, 34, 4.0);
+                // 自爆是范围攻击，距离越近伤害越高，并伴随轻微镜头震动。
+                if (distToPlayer < 6.5) {
+                    damagePlayer(Math.max(8, Math.round(36 * (1 - distToPlayer / 7))));
+                    gameState.screenShake = Math.max(gameState.screenShake, 0.30);
+                }
                 this.die();
             }
 
@@ -2845,12 +3041,19 @@
                 if (this.zombieType === 'boss_matriarch') {
                     this.tentacles.forEach((t, idx) => {
                         t.rotation.z = Math.sin(this.animPhase + idx) * 0.25;
+                        t.rotation.x = Math.cos(this.animPhase * 0.72 + idx * 0.6) * 0.12;
                     });
                     this.pustules.forEach((p, idx) => {
-                        const s = 1 + Math.sin(this.animPhase * 2 + idx) * 0.18;
-                        p.scale.setScalar(s);
+                        const pulse = 1 + Math.sin(this.animPhase * 2 + idx) * 0.18;
+                        p.scale.setScalar(pulse);
                     });
                     return;
+                }
+                if (this.zombieType === 'bloater' && this.pustules.length) {
+                    this.pustules.forEach((p, idx) => {
+                        const pulse = 1 + Math.sin(this.animPhase * 2.4 + idx * 0.85) * 0.13;
+                        p.scale.set( pulse, pulse, pulse );
+                    });
                 }
 
                 if (!this.limbs.leftLeg || !this.limbs.rightLeg) return;
@@ -3367,6 +3570,8 @@
          **************************************************************/
         const keys = { w: false, a: false, s: false, d: false, space: false };
         const joystickInput = { x: 0, y: 0 }; // 手机端摇杆向量
+        // 触屏/鼠标快速转向时，第一人称枪模有轻微惯性偏移，视觉上明确响应瞄准输入。
+        const weaponAimLag = { x: 0, y: 0 };
         let verticalVelocity = 0;
         let isGrounded = true;
         const PLAYER_RADIUS = 0.55;
@@ -3432,7 +3637,7 @@
             if (code === 'Space') keys.space = false;
         });
 
-        // PC 鼠标视角与射击
+        // PC 鼠标视角与射击；枪模惯性与移动端一致，但幅度克制。
         window.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement !== canvas || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen) return;
             const isSniperADS = gameState.isADS && gameState.weapons[gameState.currentWeaponIndex]?.id === 3;
@@ -3440,6 +3645,8 @@
             yawObject.rotation.y -= e.movementX * sensitivity;
             pitchObject.rotation.x -= e.movementY * sensitivity;
             pitchObject.rotation.x = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitchObject.rotation.x));
+            weaponAimLag.x = Math.max(-0.14, Math.min(0.14, weaponAimLag.x + e.movementX * 0.00035));
+            weaponAimLag.y = Math.max(-0.10, Math.min(0.10, weaponAimLag.y + e.movementY * 0.00028));
         });
 
         window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -3526,40 +3733,51 @@
             joystickInput.y = -dy / maxR;
         }
 
-        // 右半屏滑动旋转视角
+        // 右侧触屏区域：使用 Pointer Events + pointer capture，解决滑动出区域后丢失输入的问题。
+        // 摄像机转向会同步影响子弹射线；枪模再加少量反向惯性，让枪口跟随操作有可见反馈。
         const lookZone = document.getElementById('touch-look-zone');
-        let lookTouchId = null;
+        let lookPointerId = null;
         let lastLookX = 0, lastLookY = 0;
+        lookZone.style.touchAction = 'none';
 
-        lookZone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const t = e.changedTouches[0];
-            lookTouchId = t.identifier;
-            lastLookX = t.clientX;
-            lastLookY = t.clientY;
-        }, { passive: false });
+        function applyTouchLookDelta(dx, dy) {
+            if (!gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
+            const isSniperADS = gameState.isADS && gameState.weapons[gameState.currentWeaponIndex]?.id === 3;
+            const sens = isSniperADS ? 0.0018 : (gameState.isADS ? 0.0028 : 0.0048);
+            yawObject.rotation.y -= dx * sens;
+            pitchObject.rotation.x -= dy * sens;
+            pitchObject.rotation.x = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitchObject.rotation.x));
+            weaponAimLag.x = Math.max(-0.16, Math.min(0.16, weaponAimLag.x + dx * 0.00125));
+            weaponAimLag.y = Math.max(-0.12, Math.min(0.12, weaponAimLag.y + dy * 0.0010));
+        }
 
-        lookZone.addEventListener('touchmove', (e) => {
+        lookZone.addEventListener('pointerdown', (e) => {
+            if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || e.pointerType === 'mouse') return;
             e.preventDefault();
-            if (!gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen) return;
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                if (t.identifier === lookTouchId) {
-                    const dx = t.clientX - lastLookX;
-                    const dy = t.clientY - lastLookY;
-                    lastLookX = t.clientX;
-                    lastLookY = t.clientY;
-                    const isSniperADS = gameState.isADS && gameState.weapons[gameState.currentWeaponIndex]?.id === 3;
-                    const sens = isSniperADS ? 0.0014 : (gameState.isADS ? 0.0026 : 0.0045);
-                    yawObject.rotation.y -= dx * sens;
-                    pitchObject.rotation.x -= dy * sens;
-                    pitchObject.rotation.x = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitchObject.rotation.x));
-                    break;
-                }
+            lookPointerId = e.pointerId;
+            lastLookX = e.clientX;
+            lastLookY = e.clientY;
+            try { lookZone.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        lookZone.addEventListener('pointermove', (e) => {
+            if (e.pointerId !== lookPointerId) return;
+            e.preventDefault();
+            const dx = e.clientX - lastLookX;
+            const dy = e.clientY - lastLookY;
+            lastLookX = e.clientX;
+            lastLookY = e.clientY;
+            applyTouchLookDelta(dx, dy);
+        });
+        function endTouchLook(e) {
+            if (e && e.pointerId !== undefined && e.pointerId !== lookPointerId) return;
+            if (lookPointerId !== null) {
+                try { if (lookZone.hasPointerCapture(lookPointerId)) lookZone.releasePointerCapture(lookPointerId); } catch (err) {}
             }
-        }, { passive: false });
-
-        lookZone.addEventListener('touchend', () => { lookTouchId = null; });
+            lookPointerId = null;
+        }
+        lookZone.addEventListener('pointerup', endTouchLook);
+        lookZone.addEventListener('pointercancel', endTouchLook);
+        lookZone.addEventListener('lostpointercapture', endTouchLook);
 
         // 移动端功能按钮绑定
         const mFireBtn = document.getElementById('m-btn-fire');
@@ -3803,6 +4021,19 @@
                 ds.group.position.x = ds.baseX + Math.sin(nowSeconds * 0.8 + ds.phase) * 0.9;
                 ds.group.rotation.y = Math.sin(nowSeconds * 0.5 + ds.phase) * 0.6;
             }
+            for (let i = 0; i < smokeColumnPieces.length; i++) {
+                const puff = smokeColumnPieces[i];
+                puff.mesh.position.x = puff.baseX + Math.sin(nowSeconds * puff.speed + puff.phase) * (0.35 + i * 0.08);
+                puff.mesh.position.y = puff.baseY + Math.sin(nowSeconds * puff.speed * 1.4 + puff.phase) * 0.55;
+                puff.mesh.lookAt(yawObject.position.x, puff.mesh.position.y, yawObject.position.z);
+            }
+            for (let i = 0; i < fireSmokePuffs.length; i++) {
+                const puff = fireSmokePuffs[i];
+                const rise = (nowSeconds * puff.speed + puff.phase) % puff.lifeHeight;
+                puff.mesh.position.set(puff.baseX + Math.sin(nowSeconds * 0.8 + puff.phase) * 0.3, 1.15 + rise, puff.baseZ);
+                puff.mesh.material.opacity = Math.max(0.05, 0.25 * (1 - rise / puff.lifeHeight));
+                puff.mesh.lookAt(yawObject.position.x, puff.mesh.position.y, yawObject.position.z);
+            }
 
             if (gameState.isRunning && !gameState.isPaused && !gameState.isGameOver && !gameState.isUpgradeOpen) {
                 updatePlayerMovement(dt);
@@ -3854,18 +4085,22 @@
                     const idleWeightDrop = isPlayerMoving ? 0 : -0.018;
                     const swayX = isPlayerMoving ? Math.sin(walkBobTime * 0.5) * 0.014 : Math.sin(nowSeconds * 1.6) * 0.004;
                     const swayY = isPlayerMoving ? Math.abs(Math.cos(walkBobTime)) * 0.016 : Math.cos(nowSeconds * 2.1) * 0.005;
+                    weaponAimLag.x *= Math.exp(-dt * 5.6);
+                    weaponAimLag.y *= Math.exp(-dt * 5.8);
 
-                    const targetX = (gameState.isADS ? 0.0 : 0.30) + swayX;
-                    const targetY = (gameState.isADS ? -0.19 : -0.29 + idleWeightDrop) - swayY;
+                    const targetX = (gameState.isADS ? 0.0 : 0.30) + swayX - weaponAimLag.x * 0.38;
+                    const targetY = (gameState.isADS ? -0.19 : -0.29 + idleWeightDrop) - swayY - weaponAimLag.y * 0.22;
                     const targetZ = gameState.isReloading ? -0.35 : (gameState.isADS ? -0.42 : -0.54);
-                    const targetRotX = gameState.isReloading ? -0.45 : (isPlayerMoving ? 0.015 : -0.028);
+                    const targetRotX = (gameState.isReloading ? -0.45 : (isPlayerMoving ? 0.015 : -0.028)) + weaponAimLag.y * 0.30;
+                    const targetRotY = -weaponAimLag.x * 0.48;
+                    const targetRotZ = -weaponAimLag.x * 0.34;
 
                     gunGroup.position.x += (targetX - gunGroup.position.x) * 14 * dt;
                     gunGroup.position.y += (targetY - gunGroup.position.y) * 14 * dt;
                     gunGroup.position.z += (targetZ - gunGroup.position.z) * 12 * dt;
                     gunGroup.rotation.x += (targetRotX - gunGroup.rotation.x) * 12 * dt;
-                    gunGroup.rotation.y += (0 - gunGroup.rotation.y) * 12 * dt;
-                    gunGroup.rotation.z += (0 - gunGroup.rotation.z) * 12 * dt;
+                    gunGroup.rotation.y += (targetRotY - gunGroup.rotation.y) * 12 * dt;
+                    gunGroup.rotation.z += (targetRotZ - gunGroup.rotation.z) * 12 * dt;
 
                     if (gunGroup.userData.muzzleFlash && gunGroup.userData.muzzleFlash.material.opacity > 0) {
                         gunGroup.userData.muzzleFlash.material.opacity = Math.max(0, gunGroup.userData.muzzleFlash.material.opacity - 14 * dt);
@@ -3911,9 +4146,10 @@
             for (let i = particles.length - 1; i >= 0; i--) {
                 const p = particles[i];
                 p.life -= dt;
-                p.vel.y -= 15 * dt;
+                p.vel.y -= (p.gravity === undefined ? 15 : p.gravity) * dt;
                 p.mesh.position.addScaledVector(p.vel, dt);
-                if (p.material) p.material.opacity = Math.max(0, p.life / (p.maxLife || 0.32));
+                if (p.expandRate) p.mesh.scale.multiplyScalar(1 + p.expandRate * dt);
+                if (p.material) p.material.opacity = Math.max(0, p.life / (p.maxLife || 0.32)) * (p.expandRate ? 0.48 : 1);
                 if (p.life <= 0) {
                     scene.remove(p.mesh);
                     particles.splice(i, 1);
@@ -3932,6 +4168,8 @@
         window.onload = function () {
             setupLights();
             buildCityArena();
+            // 此函数此前仅定义未调用，导致火桶火光、贴地烟雾、屋顶光束和远景感染者不会显示。
+            buildUrbanDebrisAndAtmosphere();
             initWeaponsState();
             animate();
         };
