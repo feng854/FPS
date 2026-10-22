@@ -249,7 +249,7 @@
                     </div>
                     <div class="text-slate-300">赏金：<span id="hud-credits" class="text-amber-400 font-black font-mono">100</span> PTS <span class="hidden sm:inline text-[10px] text-sky-300">(B键工坊)</span></div>
                     <div class="text-slate-400">手电：<span id="hud-flashlight-status" class="text-emerald-400 font-semibold">开启(F)</span> | 手雷 <span id="hud-grenades" class="text-amber-300 font-mono font-bold">3</span>(G)</div>
-                    <div class="hidden md:block text-[10px] text-amber-300/90 font-mono" id="hud-reload-hint">Q:狙击倍镜开/关 | [1/2]切主副枪 | [V]近战 | [E]补给</div>
+                    <div class="hidden md:block text-[10px] text-amber-300/90 font-mono" id="hud-reload-hint">Q:瞄准/开镜 | [1/2]切主副枪 | [V]近战 | [E]补给</div>
                 </div>
             </div>
 
@@ -713,7 +713,7 @@
                     <!-- 调试/快速体验提示与启动按钮 -->
                     <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
                         <div class="font-bold text-slate-200">💡 战术操作提示：</div>
-                        <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，狙击枪按 <b>Q</b> 切换 8 倍镜，<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
+                        <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，所有枪械按 <b>Q</b> 开启/关闭瞄准（狙击枪为 8 倍镜），<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
                         <div>• 手机/平板端：左下摇杆移动；右侧空白区域上下左右滑动即可转向/瞄准，枪模会随操作轻微跟随；右下角一键开镜、射击、切枪、投雷。</div>
                     </div>
                 </div>
@@ -3760,8 +3760,8 @@
                 updateHUD();
             }
             if (code === 'KeyB') toggleUpgradeBench();
-            // PC 狙击倍镜独立快捷键：Q 切换开镜，不再依赖鼠标右键。
-            if (code === 'KeyQ' && !e.repeat && gameConfig.systemMode === 'pc' && gameState.isRunning && !gameState.isPaused && !gameState.isUpgradeOpen && gameState.weapons[gameState.currentWeaponIndex]?.id === 3) {
+            // PC 通用瞄准快捷键：所有枪械均可按 Q 开启/关闭瞄准；狙击枪显示 8 倍镜。
+            if (code === 'KeyQ' && !e.repeat && gameConfig.systemMode === 'pc' && gameState.isRunning && !gameState.isPaused && !gameState.isUpgradeOpen) {
                 setADS(!gameState.isADS);
             }
             if (code === 'Digit1') switchWeapon(0);
