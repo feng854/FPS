@@ -187,11 +187,24 @@
 </head>
 <body class="text-slate-100">
 
+    <!--
+    =====================================================================
+    【源代码分组导航｜本版只增加中文注释，不修改任何游戏功能代码】
+    第1组：场景、枪械、丧尸 —— 3D城市/灯光/材质、第一人称枪模与射击、四类感染者和三阶段尸王。
+    第2组：控制按钮 —— 电脑键盘鼠标、手机/平板摇杆、全屏触摸瞄准，以及开火/开镜/换弹/切枪/补给按钮事件。
+    第3组：其他系统 —— 背景音乐和音效、HUD与雷达、计时和BOSS流程、弹药箱/油桶/手雷、武器工坊、暂停结算及主循环。
+    说明：为保证运行逻辑不变，代码仍保持原来的执行顺序；通过下面的分组注释快速定位对应模块。
+    =====================================================================
+    -->
+
+    <!-- ================= 第1组：场景 / 枪械 / 丧尸（视觉与战斗主体） ================= -->
+    <!-- 场景入口：Three.js 将城市、建筑、光照、枪械模型和感染者绘制到此画布。 -->
     <!-- 3D 渲染画布 -->
     <canvas id="game-canvas"></canvas>
 <!-- 受伤屏幕泛红 -->
     <div id="damage-overlay"></div>
 
+    <!-- 【第1组·枪械】狙击镜叠加层：圆形镜圈、绿色密位线和中心红点。 -->
     <!-- 狙击枪 8.0X 高倍光学密位镜 -->
     <div id="sniper-scope" class="hidden flex items-center justify-center">
         <div class="relative w-[60vmin] h-[60vmin] rounded-full border-2 border-emerald-400/60 shadow-[0_0_60px_rgba(16,185,129,0.28)]">
@@ -216,6 +229,8 @@
     <!-- 3D 飘字容器 -->
     <div id="damage-numbers" class="fixed inset-0 pointer-events-none z-25 overflow-hidden"></div>
 
+    <!-- ================= 第3组：其他系统 / HUD状态信息 ================= -->
+    <!-- HUD 只显示血量、弹药、阶段、击杀、BOSS血条等状态；对应数值由脚本更新。 -->
     <!-- ================= HUD 游戏界面 ================= -->
     <div id="hud" class="fixed inset-0 pointer-events-none z-20 hidden">
         
@@ -240,11 +255,10 @@
 
             <!-- 中间：15分钟生存计时器 + 顶部 BOSS 专属血条 + 播报横幅 -->
             <div class="flex flex-col items-center gap-1.5 flex-1 max-w-md mx-auto">
-                <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700/90 px-4 py-1.5 rounded-2xl shadow-2xl text-center">
-                    <div class="text-[10px] text-slate-400 tracking-widest uppercase">15分钟末日逃生计时 (05:00 / 10:00 / 15:00 尸王降临)</div>
+                <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700/90 px-4 py-1.5 rounded-1xl shadow-2xl text-center">
+                    <div class="text-[10px] text-slate-400 tracking-widest uppercase">15分钟末日逃生计时 </div>
                     <div class="flex items-baseline justify-center gap-2">
-                        <span id="hud-timer" class="text-xl md:text-2xl font-black font-mono text-emerald-400">00:00</span>
-                        <span class="text-xs text-slate-500 font-mono">/ 15:00</span>
+                        <span id="hud-timer" class="text-xl md:text-1xl font-black font-mono text-emerald-400">00:00</span>
                     </div>
                 </div>
 
@@ -328,6 +342,8 @@
             靠近绿色补给箱：手机点「📦补给」，电脑按 E
         </div>
 
+        <!-- ================= 第2组：控制按钮 / 手机与平板触控层 ================= -->
+        <!-- 左侧摇杆负责移动；右侧空白区域由脚本负责转动视角；下方按钮负责开火和战术动作。 -->
         <!-- ================= 手机/平板 专属虚拟触控操纵层 ================= -->
         <div id="mobile-controls" class="hidden fixed inset-0 pointer-events-none z-25">
             <!-- 左下：虚拟移动摇杆区 -->
@@ -423,6 +439,8 @@
         </div>
     </div>
 
+    <!-- ================= 第3组：其他系统 / 武器改造工坊界面 ================= -->
+    <!-- 此处是升级菜单的显示结构；伤害、射速、弹匣升级的购买逻辑在脚本事件区。 -->
     <!-- ================= 武器改造工坊弹窗 (按 B 键或点击顶部按钮开关) ================= -->
     <div id="upgrade-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-35 hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-xl w-full p-5 md:p-7 shadow-2xl">
@@ -486,6 +504,7 @@
         </div>
     </div>
 
+    <!-- 【第3组·其他系统】暂停遮罩：显示暂停说明、继续游戏和返回配置大厅按钮。 -->
     <!-- ================= 暂停/鼠标释放提示遮罩 ================= -->
     <div id="pause-overlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-30 hidden flex-col items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl p-7 max-w-md w-full text-center shadow-2xl">
@@ -503,6 +522,8 @@
         </div>
     </div>
 
+    <!-- ================= 第3组：其他系统 / 开局配置与结算界面 ================= -->
+    <!-- 菜单包含操作模式、初始武器选择、感染者/BOSS档案；不在这里执行战斗AI。 -->
     <!-- ================= 开始菜单 & 战局结算大厅 ================= -->
     <div id="menu-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
         <div class="bg-slate-900/95 border border-slate-700/90 rounded-3xl max-w-5xl w-full p-5 md:p-7 shadow-2xl my-auto">
@@ -707,7 +728,10 @@
     </div>
 
     <!-- ================= 游戏核心逻辑脚本 ================= -->
+    <!-- 脚本分组提示：音效/HUD/计时/补给/菜单事件归第3组；场景、枪械、丧尸归第1组；输入事件归第2组。 -->
     <script>
+        // ================= 第3组：其他系统 / 背景音乐与声音效果 =================
+        // 管理背景音乐、枪声、命中音、脚步、感染者嘶吼及BOSS咆哮；不负责场景建模。
         /**************************************************************
          * 1. Web Audio API 纯合成音效系统（末日 BGM + 丧尸与三阶 BOSS 咆哮）
          **************************************************************/
@@ -1128,6 +1152,8 @@
         /**************************************************************
          * 2. 武器总库与 15分钟三阶 BOSS + 普通丧尸配置表
          **************************************************************/
+        // ================= 第1组：枪械 / 武器参数配置 =================
+        // 集中定义手枪、突击步枪、霰弹枪和狙击枪的伤害、射速、弹量、散布、后坐力与模型尺寸。
         const ALL_WEAPON_CATALOG = {
             0: {
                 id: 0, name: '战术手枪', soundType: 'pistol', modeText: '半自动 · 随身副枪',
@@ -1151,6 +1177,8 @@
             }
         };
 
+        // ================= 第1组：丧尸 / 四类基础感染者与三阶段尸王参数 =================
+        // 这里设置每种感染者的生命、速度、伤害、防御、出现权重及击杀赏金；外形和AI见后续丧尸系统。
         const ZOMBIE_CONFIGS = {
             walker:  { label: '普通行尸', hp: 90,  speed: 3.7, detectRange: 30, damage: 8,  attackInterval: 1.25, defense: 0.00, weight: 0.48, reward: 25 },
             runner:  { label: '疾速疫影', hp: 65,  speed: 6.2, detectRange: 36, damage: 6,  attackInterval: 0.85, defense: 0.00, weight: 0.25, reward: 35 },
@@ -1178,6 +1206,8 @@
 
         const MAX_NORMAL_ZOMBIES = 12;
 
+        // ================= 第1组：场景 / Three.js世界、摄像机与玩家第一人称视角 =================
+        // 创建场景、摄像机、玩家朝向节点和枪械挂点；全局状态同时记录当前战局数据。
         /**************************************************************
          * 3. 全局状态与 Three.js 场景渲染器初始化
          **************************************************************/
@@ -1266,6 +1296,8 @@
 
         const raycaster = new THREE.Raycaster();
 
+        // ================= 第1组：场景与枪械 / 写实材质工具 =================
+        // 生成磨损金属、握把胶带、衣袖污渍等程序化纹理，供环境和第一人称武器复用。
         /**************************************************************
          * 3.5 写实 PBR 材质与组件工具函数
          **************************************************************/
@@ -1431,6 +1463,7 @@
             return lamp;
         }
 
+        // 【第1组·场景】设置暖金色夕阳、冷蓝环境补光、街灯与手电照明。
         function setupLights() {
             createSunsetSkyDome();
             // 暖金夕阳主光 + 冷蓝环境补光；保持中间调可读，不额外压暗画面。
@@ -1543,6 +1576,7 @@
             return mesh;
         }
 
+        // 【第1组·场景】生成地图地面、道路标线、围墙、铁丝网、楼房和车辆等静态场景。
         function buildCityArena() {
             // 地面与道路标线
             const groundGeo = new THREE.PlaneGeometry(180, 180);
@@ -1940,6 +1974,8 @@
             });
         }
 
+        // ================= 第3组：其他系统 / 通用碰撞工具 =================
+        // 场景、玩家和感染者会共用部分碰撞判断；玩家地图边界约束在输入/移动模块附近。
         /**************************************************************
          * 5. 物理碰撞检测算法
          **************************************************************/
@@ -2022,6 +2058,8 @@
             return new THREE.Vector3(35, 0, 35);
         }
 
+        // ================= 第1组：枪械 / 第一人称枪械与双手外观 =================
+        // 负责手套、袖口、枪身、弹匣、枪管和瞄准镜的可见模型；不处理弹药数值结算。
         /**************************************************************
          * 6. 第一人称末日改装武器与幸存者磨损双手建模
          **************************************************************/
@@ -2237,6 +2275,7 @@
             updateHUD();
         }
 
+        // 【第1组·枪械战斗反馈】伤害数字、弹道残影、命中火花与腐蚀云等特效工具函数。
         function spawnFloatingDamage(worldPos, dmg, isCrit = false) {
             const container = document.getElementById('damage-numbers');
             if (!container) return;
@@ -2426,6 +2465,8 @@
             }
         }
 
+        // ================= 第1组：丧尸 / 感染者外观、动画、追击AI、攻击与死亡 =================
+        // 包含普通行尸、疾速疫影、重甲腐躯、爆裂毒胚，以及三个阶段的专属尸王模型和技能。
         /**************************************************************
          * 7. 感染者与三阶段专属尸王 BOSS 建模及 AI 行为系统
          **************************************************************/
@@ -3170,6 +3211,7 @@
             }
         }
 
+        // 【第1组·丧尸】按权重生成普通感染者，也可指定类型生成指定阶段的BOSS。
         function spawnSingleEnemy(forcedType = null) {
             const pos = getValidSpawnPosition(forcedType && forcedType.startsWith('boss_') ? 28 : 22);
             const enemy = new AIEnemy(pos, forcedType);
@@ -3258,6 +3300,8 @@
             document.getElementById('hud-timer').textContent = `${mins}:${secs}`;
         }
 
+        // ================= 第3组：其他系统 / 玩家状态、胜负结算、HUD与雷达 =================
+        // 管理玩家受伤、阵亡/胜利结算、血量显示、击杀统计、计时和小地图绘制。
         /**************************************************************
          * 8. 玩家受击、胜利/失败结算、HUD 与雷达绘制
          **************************************************************/
@@ -3434,6 +3478,8 @@
             radarCtx.fill();
         }
 
+        // ================= 第3组：其他系统 / 补给与可交互道具 =================
+        // 绿色弹药箱、红色爆炸油桶、手雷和补给提示在本节生成或更新；按键/按钮绑定在输入事件节。
         /**************************************************************
          * 8.5 弹药箱、红色爆炸油桶、手雷、近战推击与狙击倍镜
          **************************************************************/
@@ -3649,6 +3695,8 @@
             document.getElementById('btn-up-mag').textContent = `改造 (${magCost} PTS)`;
         }
 
+        // ================= 第2组：控制按钮 / 电脑键鼠、手机与平板触控 =================
+        // 本节集中处理WASD、跳跃、Q倍镜、切枪、全屏拖动瞄准、移动摇杆及触屏功能按钮。
         /**************************************************************
          * 9. 电脑键鼠 + 手机/平板触控 双系统输入监听
          **************************************************************/
@@ -3692,6 +3740,7 @@
             btn.addEventListener('click', () => setSystemMode(btn.getAttribute('data-system')));
         });
 
+        // 【第2组·控制按钮】电脑键盘按下事件：移动、切枪、Q键倍镜、换弹、手雷、近战、暂停等快捷操作。
         // 键盘事件
         window.addEventListener('keydown', (e) => {
             const code = e.code;
@@ -3778,6 +3827,7 @@
         const joyKnob = document.getElementById('joystick-knob');
         let joyTouchId = null;
 
+        // 【第2组·控制按钮】移动摇杆的触摸开始/移动/结束事件，仅负责设置移动向量。
         joyZone.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.changedTouches[0];
@@ -3848,6 +3898,7 @@
             );
         }
 
+        // 【第2组·控制按钮】全屏空白处拖动瞄准：将触摸位移转换为水平转向和垂直俯仰。
         function startScreenAim(e) {
             if (gameConfig.systemMode !== 'mobile' || !gameState.isRunning || gameState.isPaused || gameState.isUpgradeOpen || gameState.isGameOver) return;
             if (lookPointerId !== null || isTouchAimBlocked(e.target)) return;
@@ -3906,6 +3957,7 @@
             mobileFirePointerId = null;
             gameState.mouseDown = false;
         }
+        // 【第2组·控制按钮】手机/平板功能键绑定：开火、开镜、换弹、切枪、跳跃、手雷、近战、补给和手电。
         mFireBtn.addEventListener('pointerdown', startMobileFire, { passive: false });
         mFireBtn.addEventListener('pointerup', stopMobileFire);
         mFireBtn.addEventListener('pointercancel', stopMobileFire);
@@ -4059,6 +4111,8 @@
             showAmmoPrompt('补给教学：靠近绿色弹药箱后，手机点「📦补给」；电脑按 E（约 4 米内）', 3000);
         }
 
+        // ================= 第3组：其他系统 / 主循环与整局调度 =================
+        // 每帧更新玩家移动与碰撞、感染者AI、弹药道具、15分钟BOSS时间轴、镜头效果并渲染场景。
         /**************************************************************
          * 10. 主循环：移动碰撞 + 15分钟时间轴 + 狙击倍镜缩放 + 渲染
          **************************************************************/
