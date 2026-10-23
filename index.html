@@ -76,7 +76,7 @@
             overscroll-behavior: none;
         }
 
-        /* 手机/平板专属 HUD：弹药框缩小并半透明，战术按钮围绕开火键排列 */
+        /* 手机/平板横屏 HUD：弹药框缩小并半透明，战术按钮围绕开火键排列；竖屏不作为操作布局 */
         body.mobile-ui-active #bottom-hud-panels { left: 7px !important; right: 7px !important; bottom: 6px !important; gap: 4px !important; align-items: end !important; }
         body.mobile-ui-active #hp-panel { width: clamp(88px, 17vw, 140px) !important; padding: 4px 6px !important; border-radius: 10px !important; background: rgba(15,23,42,.48) !important; }
         body.mobile-ui-active #ammo-panel { width: clamp(76px, 13vw, 112px) !important; min-width:76px !important; padding: 4px 5px !important; border-radius: 0 9px 9px 0 !important; background: rgba(15,23,42,.42) !important; border-color: rgba(148,163,184,.28) !important; margin-left:-2px !important; }
@@ -97,7 +97,7 @@
         body.mobile-ui-active #mobile-controls .touch-btn { backdrop-filter: blur(5px); }
         /* 手机/平板：开火键固定在右下角最底部；四个战斗键沿开火键左上侧约 120° 圆弧排列 */
         body.mobile-ui-active #mobile-action-stack { position: fixed !important; right: 10px !important; bottom: 10px !important; width: 260px !important; height: 230px !important; overflow: visible !important; }
-        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 180px !important; top: 120px !important; width: 80px !important; height: 80px !important; min-width: 80px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
+        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 174px !important; top: 66px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
         body.mobile-ui-active #mobile-action-stack .radial-btn { position:absolute !important; width: 42px !important; height: 42px !important; min-width:42px !important; border-radius:50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px !important; font-size:8px !important; line-height:1 !important; background:rgba(15,23,42,.48) !important; border:1px solid rgba(203,213,225,.48) !important; box-shadow:0 2px 8px rgba(0,0,0,.18); }
         body.mobile-ui-active .radial-btn span:first-child { font-size:13px !important; line-height:1 !important; }
         body.mobile-ui-active .radial-btn span:last-child { font-size:7px !important; white-space:nowrap; }
@@ -128,16 +128,6 @@
             body.mobile-ui-active #hud-buff-badge { font-size:7px !important; padding:1px 3px !important; }
             body.mobile-ui-active #hud-top-buttons button { padding: 2px 4px !important; font-size: 7px !important; }
         }
-        @media (max-width: 520px) and (orientation: portrait) {
-            body.mobile-ui-active #joystick-zone { width: 104px !important; height: 104px !important; left: 8px !important; bottom: 104px !important; }
-            body.mobile-ui-active #mobile-action-stack { right: 4px !important; bottom: 5.5px !important; transform: scale(.85); transform-origin: bottom right; }　/* 开火键位置 */
-            body.mobile-ui-active #weapon-switch-panel  { position: fixed; right: 50%; bottom: 25px; transform: translateX(50%); }　/* 主辅武器位置 */
-            body.mobile-ui-active #weapon-ammo-combo { max-width:calc(100vw - 104px); }
-            body.mobile-ui-active #timer-status-panel, body.mobile-ui-active #top-stats-panel { height: 50px !important; min-width:0 !important; }　/* 计数器位置 */
-            body.mobile-ui-active #timer-status-panel { min-width:140px !important; }
-            body.mobile-ui-active #hud-buff-badge { font-size:7px !important; padding:1px 3px !important; }
-        }
-
         /* 狙击高倍镜遮罩 */
         #sniper-scope {
             position: fixed;
@@ -197,7 +187,66 @@
 
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    </style>
+    
+        /* ================= 第2组：手机/平板横屏专用布局 ================= */
+        /* 仅保留横屏操作：竖屏时显示旋转提示，不再使用竖屏 HUD 布局。 */
+        @media (orientation: portrait) {
+            body.mobile-ui-active::after {
+                content: "请将手机/平板旋转为横屏后开始游戏";
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+                background: rgba(3, 7, 18, .97);
+                color: #f8fafc;
+                font-size: clamp(18px, 4vw, 28px);
+                font-weight: 900;
+                text-align: center;
+                letter-spacing: 1px;
+            }
+            body.mobile-ui-active #mobile-controls,
+            body.mobile-ui-active #hud,
+            body.mobile-ui-active #bottom-hud-panels {
+                visibility: hidden !important;
+            }
+        }
+        @media (orientation: landscape) {
+            /* 横屏：开火键上移，仍固定在右侧；数值可按手感微调。 */
+            body.mobile-ui-active #mobile-action-stack {
+                right: 5px !important;
+                bottom: 5px !important;
+                transform: scale(.78) !important;
+                transform-origin: bottom right !important;
+            }
+            body.mobile-ui-active #mobile-action-stack .radial-fire {
+                top: 66px !important;
+            }
+            /* 主武器、副武器和弹药计数作为一个整体，放在屏幕底部中央，避免弹药框脱离。 */
+            body.mobile-ui-active #weapon-ammo-combo {
+                position: fixed !important;
+                left: 50% !important;
+                bottom: 8px !important;
+                right: auto !important;
+                margin: 0 !important;
+                max-width: calc(100vw - 220px) !important;
+                transform: translateX(-50%) !important;
+                z-index: 40 !important;
+            }
+            body.mobile-ui-active #weapon-switch-panel {
+                position: relative !important;
+                left: auto !important;
+                top: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                margin: 0 !important;
+                transform: none !important;
+            }
+        }
+
+</style>
 </head>
 <body class="text-slate-100">
 
