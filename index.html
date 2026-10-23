@@ -97,7 +97,7 @@
         body.mobile-ui-active #mobile-controls .touch-btn { backdrop-filter: blur(5px); }
         /* 手机/平板：开火键固定在右下角最底部；四个战斗键沿开火键左上侧约 120° 圆弧排列 */
         body.mobile-ui-active #mobile-action-stack { position: fixed !important; right: 10px !important; bottom: 10px !important; width: 260px !important; height: 230px !important; overflow: visible !important; }
-        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 135px !important; top: 180px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
+        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 135px !important; top: 150px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
         ./* 上面部分是开火键的位置 */
         body.mobile-ui-active #mobile-action-stack .radial-btn { position:absolute !important; width: 42px !important; height: 42px !important; min-width:42px !important; border-radius:50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px !important; font-size:8px !important; line-height:1 !important; background:rgba(15,23,42,.48) !important; border:1px solid rgba(203,213,225,.48) !important; box-shadow:0 2px 8px rgba(0,0,0,.18); }
         body.mobile-ui-active .radial-btn span:first-child { font-size:13px !important; line-height:1 !important; }
@@ -223,8 +223,8 @@
                 transform-origin: bottom right !important;
             }
             body.mobile-ui-active #mobile-action-stack .radial-fire {
-                top: 66px !important;
-            }
+                top: 150px !important;
+            } /*开火键的上下位置 */
             /* 主武器、副武器和弹药计数作为一个整体，放在屏幕底部中央，避免弹药框脱离。 */
             body.mobile-ui-active #weapon-ammo-combo {
                 position: fixed !important;
