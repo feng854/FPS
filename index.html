@@ -94,17 +94,17 @@
         body.mobile-ui-active #weapon-switch-panel > div > div > div:first-child { font-size: 6px !important; line-height: 1.1 !important; }
         body.mobile-ui-active #weapon-switch-panel .font-bold { font-size: 8px !important; line-height: 1.1 !important; white-space: nowrap; }
         body.mobile-ui-active #mobile-controls .touch-btn { backdrop-filter: blur(5px); }
-        /* 手机/平板：开火键固定在右下方最底部；其余战斗按钮只在开火键左上方排成半圆 */
-        body.mobile-ui-active #mobile-action-stack { position: fixed !important; right: 10px !important; bottom: 10px !important; width: 224px !important; height: 205px !important; overflow: visible !important; }
-        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 144px !important; top: 129px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
+        /* 手机/平板：开火键固定在右下角最底部；四个战斗键沿开火键左上侧约 120° 圆弧排列 */
+        body.mobile-ui-active #mobile-action-stack { position: fixed !important; right: 10px !important; bottom: 10px !important; width: 260px !important; height: 230px !important; overflow: visible !important; }
+        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 174px !important; top: 144px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
         body.mobile-ui-active #mobile-action-stack .radial-btn { position:absolute !important; width: 42px !important; height: 42px !important; min-width:42px !important; border-radius:50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px !important; font-size:8px !important; line-height:1 !important; background:rgba(15,23,42,.48) !important; border:1px solid rgba(203,213,225,.48) !important; box-shadow:0 2px 8px rgba(0,0,0,.18); }
         body.mobile-ui-active .radial-btn span:first-child { font-size:13px !important; line-height:1 !important; }
         body.mobile-ui-active .radial-btn span:last-child { font-size:7px !important; white-space:nowrap; }
-        /* 倍镜、跳跃、换弹、切枪紧凑排在开火键左上方的半圆弧上；移除手雷键 */
-        body.mobile-ui-active .radial-ads { left: 144px !important; top: 76px !important; }
-        body.mobile-ui-active .radial-jump { left: 108px !important; top: 48px !important; }
-        body.mobile-ui-active .radial-reload { left: 66px !important; top: 42px !important; }
-        body.mobile-ui-active .radial-switch { left: 28px !important; top: 66px !important; }
+        /* 【第2组·手机/平板战斗按钮】倍镜、跳跃、换弹、切枪以开火键为圆心，间距拉开约 120° 排成左上半弧；不显示手雷键 */
+        body.mobile-ui-active .radial-switch { left: 82px !important; top: 146px !important; }
+        body.mobile-ui-active .radial-reload { left: 101px !important; top: 98px !important; }
+        body.mobile-ui-active .radial-jump { left: 147px !important; top: 72px !important; }
+        body.mobile-ui-active .radial-ads { left: 197px !important; top: 81px !important; }
         body.mobile-ui-active #hud-top-buttons #m-btn-pickup { display:inline-flex !important; }
         /* 次要功能（手电、推击、改造、音效、暂停）统一放在右上统计计数框下方 */
         body.mobile-ui-active #hud-top-buttons { gap:3px !important; flex-wrap:wrap; justify-content:flex-end; max-width:min(72vw, 410px); margin-top:2px; }
@@ -697,7 +697,7 @@
                     <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
                         <div class="font-bold text-slate-200">💡 战术操作提示：</div>
                         <div>• 电脑端：<b>WASD</b>移动，<b>左键</b>射击，所有枪械按 <b>Q</b> 开启/关闭瞄准（狙击枪为 8 倍镜），<b>1/2</b>切主副武器，<b>B</b>武器改造，<b>G</b>手雷，<b>V</b>近战推击，<b>F</b>手电。</div>
-                        <div>• 手机/平板端：左下摇杆移动；右侧空白区域上下左右滑动即可转向/瞄准，枪模会随操作轻微跟随；右下角一键开镜、射击、切枪、投雷。</div>
+                        <div>• 手机/平板端：左下摇杆移动；右侧空白区域上下左右滑动即可转向/瞄准，枪模会随操作轻微跟随；右下角一键开镜、射击、切枪、换弹和跳跃。</div>
                     </div>
                 </div>
 
