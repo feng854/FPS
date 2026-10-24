@@ -103,11 +103,12 @@
         body.mobile-ui-active .radial-btn span:first-child { font-size:13px !important; line-height:1 !important; }
         body.mobile-ui-active .radial-btn span:last-child { font-size:7px !important; white-space:nowrap; }
         /* 【第2组·手机/平板战斗按钮】倍镜、跳跃、换弹、切枪以开火键为圆心，间距拉开约 120° 排成左上半弧；不显示手雷键 */
-        body.mobile-ui-active .radial-switch { left: 66px !important; top: 126px !important; }
-        body.mobile-ui-active .radial-reload { left: 84px !important; top: 76px !important; }
-        body.mobile-ui-active .radial-jump { left: 132px !important; top: 42px !important; }
-        body.mobile-ui-active .radial-ads { left: 184px !important; top: 49px !important; }
-        body.mobile-ui-active #hud-top-buttons #m-btn-pickup { display:inline-flex !important; }
+        / 开火键保持 left:135px、top:80px；其他按钮围绕开火键分布 /
+        / 以下坐标均相对于 #mobile-action-stack */
+        body.mobile-ui-active #mobile-action-stack .radial-jump {left: 91px !important;top: 37px !important;}
+        body.mobile-ui-active #mobile-action-stack .radial-ads {left: 181px !important;top: 39px !important;}
+        body.mobile-ui-active #mobile-action-stack .radial-reload {left: 73px !important;top: 91px !important;}
+        body.mobile-ui-active #mobile-action-stack .radial-switch {left: 94px !important;top: 142px !important;}
         /* 次要功能（手电、推击、改造、音效、暂停）统一放在右上统计计数框下方 */
         body.mobile-ui-active #hud-top-buttons { gap:3px !important; flex-wrap:wrap; justify-content:flex-end; max-width:min(72vw, 410px); margin-top:2px; }
         body.mobile-ui-active #hud-top-buttons button { padding:3px 5px !important; font-size:8px !important; line-height:1.1 !important; border-radius:8px !important; background-color:rgba(15,23,42,.52) !important; }
@@ -217,8 +218,8 @@
         @media (orientation: landscape) {
             /* 横屏：开火键上移，仍固定在右侧；数值可按手感微调。 */
             body.mobile-ui-active #mobile-action-stack {
-                right: 5px !important;
-                bottom: 5px !important;
+                right: 3.5px !important;
+                bottom: 4.5px !important;
                 transform: scale(.78) !important;
                 transform-origin: bottom right !important;
             }
