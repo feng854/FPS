@@ -844,11 +844,11 @@
                 // 两级高通专门削弱低频，让背景音乐保持清瘦、空灵，不产生低音震动。
                 const lowCutA = this.ctx.createBiquadFilter();
                 lowCutA.type = 'highpass';
-                lowCutA.frequency.setValueAtTime(300, now);
+                lowCutA.frequency.setValueAtTime(500, now);
                 lowCutA.Q.setValueAtTime(0.707, now);
                 const lowCutB = this.ctx.createBiquadFilter();
                 lowCutB.type = 'highpass';
-                lowCutB.frequency.setValueAtTime(360, now);
+                lowCutB.frequency.setValueAtTime(650, now);
                 lowCutB.Q.setValueAtTime(0.707, now);
                 master.connect(lowCutA);
                 lowCutA.connect(lowCutB);
