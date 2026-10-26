@@ -76,7 +76,7 @@
             overscroll-behavior: none;
         }
 
-        /* 手机/平板横屏 HUD：弹药框缩小并半透明，战术按钮围绕开火键排列；竖屏不作为操作布局 */
+        /* 手机/平板专属 HUD：弹药框缩小并半透明，战术按钮围绕开火键排列 */
         body.mobile-ui-active #bottom-hud-panels { left: 7px !important; right: 7px !important; bottom: 6px !important; gap: 4px !important; align-items: end !important; }
         body.mobile-ui-active #hp-panel { width: clamp(88px, 17vw, 140px) !important; padding: 4px 6px !important; border-radius: 10px !important; background: rgba(15,23,42,.48) !important; }
         body.mobile-ui-active #ammo-panel { width: clamp(76px, 13vw, 112px) !important; min-width:76px !important; padding: 4px 5px !important; border-radius: 0 9px 9px 0 !important; background: rgba(15,23,42,.42) !important; border-color: rgba(148,163,184,.28) !important; margin-left:-2px !important; }
@@ -97,18 +97,16 @@
         body.mobile-ui-active #mobile-controls .touch-btn { backdrop-filter: blur(5px); }
         /* 手机/平板：开火键固定在右下角最底部；四个战斗键沿开火键左上侧约 120° 圆弧排列 */
         body.mobile-ui-active #mobile-action-stack { position: fixed !important; right: 10px !important; bottom: 10px !important; width: 260px !important; height: 230px !important; overflow: visible !important; }
-        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 135px !important; top: 80px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
-        /* 上面部分是开火键的位置 */
+        body.mobile-ui-active #mobile-action-stack .radial-fire { position: absolute !important; left: 174px !important; top: 144px !important; width: 76px !important; height: 76px !important; min-width: 76px !important; border-radius: 50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:rgba(225,29,72,.68) !important; border:2px solid rgba(253,164,175,.92) !important; box-shadow:0 0 20px rgba(244,63,94,.28) !important; z-index:2; }
         body.mobile-ui-active #mobile-action-stack .radial-btn { position:absolute !important; width: 42px !important; height: 42px !important; min-width:42px !important; border-radius:50% !important; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px !important; font-size:8px !important; line-height:1 !important; background:rgba(15,23,42,.48) !important; border:1px solid rgba(203,213,225,.48) !important; box-shadow:0 2px 8px rgba(0,0,0,.18); }
         body.mobile-ui-active .radial-btn span:first-child { font-size:13px !important; line-height:1 !important; }
         body.mobile-ui-active .radial-btn span:last-child { font-size:7px !important; white-space:nowrap; }
         /* 【第2组·手机/平板战斗按钮】倍镜、跳跃、换弹、切枪以开火键为圆心，间距拉开约 120° 排成左上半弧；不显示手雷键 */
-        /* 开火键保持 left:135px、top:80px；其他按钮围绕开火键分布 */
-        /* 以下坐标均相对于 #mobile-action-stack */
-        body.mobile-ui-active #mobile-action-stack .radial-jump {left: 91px !important;top: 37px !important;}
-        body.mobile-ui-active #mobile-action-stack .radial-ads {left: 181px !important;top: 39px !important;}
-        body.mobile-ui-active #mobile-action-stack .radial-reload {left: 73px !important;top: 91px !important;}
-        body.mobile-ui-active #mobile-action-stack .radial-switch {left: 94px !important;top: 142px !important;}
+        body.mobile-ui-active .radial-switch { left: 66px !important; top: 126px !important; }
+        body.mobile-ui-active .radial-reload { left: 84px !important; top: 76px !important; }
+        body.mobile-ui-active .radial-jump { left: 132px !important; top: 42px !important; }
+        body.mobile-ui-active .radial-ads { left: 184px !important; top: 49px !important; }
+        body.mobile-ui-active #hud-top-buttons #m-btn-pickup { display:inline-flex !important; }
         /* 次要功能（手电、推击、改造、音效、暂停）统一放在右上统计计数框下方 */
         body.mobile-ui-active #hud-top-buttons { gap:3px !important; flex-wrap:wrap; justify-content:flex-end; max-width:min(72vw, 410px); margin-top:2px; }
         body.mobile-ui-active #hud-top-buttons button { padding:3px 5px !important; font-size:8px !important; line-height:1.1 !important; border-radius:8px !important; background-color:rgba(15,23,42,.52) !important; }
@@ -120,7 +118,7 @@
             body.mobile-ui-active #joystick-zone { width: 98px !important; height: 98px !important; left: 8px !important; bottom: 68px !important; }
             body.mobile-ui-active #joystick-knob { width: 34px !important; height: 34px !important; }
             body.mobile-ui-active #joystick-zone span { font-size: 7px !important; }
-            body.mobile-ui-active #mobile-action-stack { right: 3.5px !important; bottom: 4.5px !important; transform: scale(.76); transform-origin: bottom right; }
+            body.mobile-ui-active #mobile-action-stack { right: 5px !important; bottom: 5px !important; transform: scale(.72); transform-origin: bottom right; }
             body.mobile-ui-active #bottom-hud-panels { left: 5px !important; right: 5px !important; bottom: 3px !important; }
             body.mobile-ui-active #hp-panel { width: 92px !important; padding: 3px 5px !important; }
             body.mobile-ui-active #ammo-panel { width: 82px !important; min-width:82px !important; padding: 3px 4px !important; }
@@ -130,6 +128,16 @@
             body.mobile-ui-active #hud-buff-badge { font-size:7px !important; padding:1px 3px !important; }
             body.mobile-ui-active #hud-top-buttons button { padding: 2px 4px !important; font-size: 7px !important; }
         }
+        @media (max-width: 520px) and (orientation: portrait) {
+            body.mobile-ui-active #joystick-zone { width: 104px !important; height: 104px !important; left: 8px !important; bottom: 104px !important; }
+            body.mobile-ui-active #mobile-action-stack { right: 3px !important; bottom: 4px !important; transform: scale(.78); transform-origin: bottom right; }
+            body.mobile-ui-active #weapon-switch-panel > div { padding: 3px 3px !important; }
+            body.mobile-ui-active #weapon-ammo-combo { max-width:calc(100vw - 104px); }
+            body.mobile-ui-active #timer-status-panel, body.mobile-ui-active #top-stats-panel { height: 50px !important; min-width:0 !important; }
+            body.mobile-ui-active #timer-status-panel { min-width:140px !important; }
+            body.mobile-ui-active #hud-buff-badge { font-size:7px !important; padding:1px 3px !important; }
+        }
+
         /* 狙击高倍镜遮罩 */
         #sniper-scope {
             position: fixed;
@@ -189,72 +197,15 @@
 
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    
-        /* ================= 第2组：手机/平板横屏专用布局 ================= */
-        /* 仅保留横屏操作：竖屏时显示旋转提示，不再使用竖屏 HUD 布局。 */
-        @media (orientation: portrait) {
-            body.mobile-ui-active::after {
-                content: "请将手机/平板旋转为横屏后开始游戏";
-                position: fixed;
-                inset: 0;
-                z-index: 99999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 24px;
-                background: rgba(3, 7, 18, .97);
-                color: #f8fafc;
-                font-size: clamp(18px, 4vw, 28px);
-                font-weight: 900;
-                text-align: center;
-                letter-spacing: 1px;
-            }
-            body.mobile-ui-active #mobile-controls,
-            body.mobile-ui-active #hud,
-            body.mobile-ui-active #bottom-hud-panels {
-                visibility: hidden !important;
-            }
-        }
-        @media (orientation: landscape) {
-            /* 横屏：开火键上移，仍固定在右侧；数值可按手感微调。 */
-            body.mobile-ui-active #mobile-action-stack {
-                right: 3.5px !important;
-                bottom: 4.5px !important;
-                transform: scale(.78) !important;
-                transform-origin: bottom right !important;
-            }
-            body.mobile-ui-active #mobile-action-stack .radial-fire {
-                top: 80px !important;
-            }
-            /* 主武器、副武器和弹药计数作为一个整体，放在屏幕底部中央，避免弹药框脱离。 */
-            body.mobile-ui-active #weapon-ammo-combo {
-                position: fixed !important;
-                left: 50% !important;
-                bottom: 8px !important;
-                right: auto !important;
-                margin: 0 !important;
-                max-width: calc(100vw - 220px) !important;
-                transform: translateX(-50%) !important;
-                z-index: 40 !important;
-            }
-            body.mobile-ui-active #weapon-switch-panel {
-                position: relative !important;
-                left: auto !important;
-                top: auto !important;
-                right: auto !important;
-                bottom: auto !important;
-                margin: 0 !important;
-                transform: none !important;
-            }
-        }
-
-</style>
+    </style>
 </head>
 <body class="text-slate-100">
 
     <!--
     =====================================================================
-    【源代码分组导航｜保留游戏机制，HUD 布局按需求调整，增加中文注释】
+    【源代码分组导航｜保留核心游戏机制，增加性能优化与中文注释】
+    本轮优化：移动端渲染像素比上限；AI 高频向量复用；保留现有武器、伤害、BOSS 三阶段与 HUD 结构。
+    说明：联机服务器权威同步、完整对象池与自动化浏览器测试属于后续阶段，本文件未虚构为已完成。
     第1组：场景、枪械、丧尸 —— 3D城市/灯光/材质、第一人称枪模与射击、四类感染者和三阶段尸王。
     第2组：控制按钮 —— 电脑键盘鼠标、手机/平板摇杆、全屏触摸瞄准，以及开火/开镜/换弹/切枪/补给按钮事件。
     第3组：其他系统 —— 背景音乐和音效、HUD与雷达、计时和BOSS流程、弹药箱/油桶/手雷、武器工坊、暂停结算及主循环。
@@ -844,11 +795,11 @@
                 // 两级高通专门削弱低频，让背景音乐保持清瘦、空灵，不产生低音震动。
                 const lowCutA = this.ctx.createBiquadFilter();
                 lowCutA.type = 'highpass';
-                lowCutA.frequency.setValueAtTime(500, now);
+                lowCutA.frequency.setValueAtTime(300, now);
                 lowCutA.Q.setValueAtTime(0.707, now);
                 const lowCutB = this.ctx.createBiquadFilter();
                 lowCutB.type = 'highpass';
-                lowCutB.frequency.setValueAtTime(650, now);
+                lowCutB.frequency.setValueAtTime(360, now);
                 lowCutB.Q.setValueAtTime(0.707, now);
                 master.connect(lowCutA);
                 lowCutA.connect(lowCutB);
@@ -1310,7 +1261,10 @@
         const canvas = document.getElementById('game-canvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+        // 性能优化：手机/平板限制渲染像素比，降低高 DPI 屏幕的 GPU 压力；桌面端保留较高画质。
+        const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window);
+        const maxPixelRatio = isTouchDevice ? 1.35 : 1.8;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.physicallyCorrectLights = true;
@@ -2610,6 +2564,12 @@
                 this.animPhase = Math.random() * Math.PI * 2;
                 this.groanCooldown = 1.5 + Math.random() * 4.0;
 
+                // 性能优化：复用 AI 计算向量，避免每帧 new/clone 产生大量短命对象。
+                this._aiEyePos = new THREE.Vector3();
+                this._playerEyePos = new THREE.Vector3();
+                this._dashDir = new THREE.Vector3();
+                this._toxinOrigin = new THREE.Vector3();
+
                 this.group = new THREE.Group();
                 this.group.position.copy(spawnPos);
                 this.hitParts = [];
@@ -3146,8 +3106,9 @@
                     this.limbs.head.rotation.x += (0 - this.limbs.head.rotation.x) * 3.0 * dt;
                 }
 
-                const aiEyePos = new THREE.Vector3(this.group.position.x, 1.65, this.group.position.z);
-                const playerEyePos = yawObject.position.clone();
+                // 复用构造函数中预先分配的向量，减少每帧垃圾回收压力。
+                const aiEyePos = this._aiEyePos.set(this.group.position.x, 1.65, this.group.position.z);
+                const playerEyePos = this._playerEyePos.copy(yawObject.position);
                 const distToPlayer = aiEyePos.distanceTo(playerEyePos);
                 const canSeePlayer = this.isBoss || (distToPlayer <= this.detectRange && hasLineOfSight(aiEyePos, playerEyePos));
 
@@ -3180,7 +3141,7 @@
                         if (this.specialTimer <= 0 && distToPlayer > 5 && distToPlayer < 28) {
                             this.specialTimer = 4.5;
                             sound.playZombieSound('boss_tyrant', 'alert', distToPlayer);
-                            const dashDir = new THREE.Vector3().subVectors(playerEyePos, this.group.position).setY(0).normalize();
+                            const dashDir = this._dashDir.subVectors(playerEyePos, this.group.position).setY(0).normalize();
                             this.group.position.addScaledVector(dashDir, 4.2);
                             resolveSphereAABBCollisions(this.group.position, this.radius, 0);
                         }
@@ -3189,7 +3150,8 @@
                     if (this.zombieType === 'boss_matriarch' && this.specialTimer <= 0) {
                         this.specialTimer = 6.5;
                         sound.playZombieSound('boss_matriarch', 'alert', distToPlayer);
-                        const toxinOrigin = this.group.position.clone().add(new THREE.Vector3(0, 2.0, 0));
+                        const toxinOrigin = this._toxinOrigin.copy(this.group.position);
+                        toxinOrigin.y += 2.0;
                         spawnImpactSparks(toxinOrigin, 0x84cc16, 16);
                         spawnCorrosiveCloud(toxinOrigin, 28, 3.4);
                         if (enemies.filter(e => !e.dead && !e.isBoss).length < MAX_NORMAL_ZOMBIES + 3) {
@@ -4462,6 +4424,7 @@
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
