@@ -1167,11 +1167,11 @@
             2: {
                 id: 2, name: '粗铁霰弹枪', soundType: 'shotgun', modeText: '近距散射 · 8弹丸',
                 damage: 15, fireRate: 0.78, magSize: 8, reserveMax: 56, reloadTime: 2.3,
-                pellets: 8, spread: 0.078, auto: false, recoilPitch: 0.07, color: 0x49372a, scale: [0.18, 0.22, 0.72]
+                pellets: 8, armorPierce: 0.5, spread: 0.078, auto: false, recoilPitch: 0.07, color: 0x49372a, scale: [0.18, 0.22, 0.72]
             },
             3: {
                 id: 3, name: '冷钢凝视狙击枪', soundType: 'sniper', modeText: '8.0X倍镜 · 高精单发',
-                damage: 135, fireRate: 0.98, magSize: 6, reserveMax: 42, reloadTime: 1.9,
+                damage: 118, fireRate: 0.98, magSize: 6, reserveMax: 36, reloadTime: 1.9,
                 pellets: 1, spread: 0.00045, auto: false, recoilPitch: 0.088, color: 0x343e49, scale: [0.17, 0.22, 1.02]
             }
         };
@@ -1204,6 +1204,8 @@
         };
 
         const MAX_NORMAL_ZOMBIES = 12;
+        // 优化：场上普通僵尸上限随时间增长（12 → 18），不再全程平坦
+        function maxNormalZombies() { return MAX_NORMAL_ZOMBIES + Math.min(6, Math.floor(gameState.elapsedTime / 150)); }
 
         // ================= 第1组：场景 / Three.js世界、摄像机与玩家第一人称视角 =================
         // 创建场景、摄像机、玩家朝向节点和枪械挂点；全局状态同时记录当前战局数据。
@@ -1466,6 +1468,8 @@
         }
 
         // 【第1组·场景】设置暖金色夕阳、冷蓝环境补光、街灯与手电照明。
+        let sunLight = null;
+        const SUN_OFFSET = new THREE.Vector3(-48, 18, 32);
         function setupLights() {
             createSunsetSkyDome();
             // 暖金夕阳主光 + 冷蓝环境补光；保持中间调可读，不额外压暗画面。
@@ -1473,15 +1477,18 @@
             scene.add(new THREE.AmbientLight(0x9aa8b2, 0.32));
 
             const sun = new THREE.DirectionalLight(0xffc58a, 2.3);
+            sunLight = sun;
             sun.position.set(-48, 18, 32);
             sun.castShadow = true;
             sun.shadow.mapSize.set(2048, 2048);
             sun.shadow.camera.near = 1;
             sun.shadow.camera.far = 220;
-            sun.shadow.camera.left = -105;
-            sun.shadow.camera.right = 105;
-            sun.shadow.camera.top = 105;
-            sun.shadow.camera.bottom = -105;
+            // 优化：阴影范围缩到 ±55 并跟随玩家，同样 2048 贴图下近处阴影清晰约 2 倍
+            sun.shadow.camera.left = -55;
+            sun.shadow.camera.right = 55;
+            sun.shadow.camera.top = 55;
+            sun.shadow.camera.bottom = -55;
+            scene.add(sun.target);
             sun.shadow.bias = -0.00025;
             sun.shadow.normalBias = 0.035;
             sun.shadow.radius = 5;
@@ -2321,18 +2328,21 @@
         }
 
         function spawnTracer(startPos, endPos, colorHex = 0xfef08a) {
-            const mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.85 });
+            const mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.85, fog: false });
             const geo = new THREE.BufferGeometry().setFromPoints([startPos.clone(), endPos.clone()]);
             const line = new THREE.Line(geo, mat);
             scene.add(line);
             bulletTracers.push({ line, life: 0.07 });
         }
 
+        const SPARK_GEO = new THREE.TetrahedronGeometry(1, 0);
+        const CLOUD_GEO = new THREE.SphereGeometry(1, 8, 6);
         function spawnImpactSparks(pos, colorHex = 0xfbbf24, count = 6) {
             for (let i = 0; i < count; i++) {
-                const geo = new THREE.TetrahedronGeometry(0.045 + Math.random() * 0.035, 0);
+                const geo = SPARK_GEO;
                 const mat = new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.65, roughness: 0.48, transparent: true, opacity: 1 });
                 const mesh = new THREE.Mesh(geo, mat);
+                mesh.scale.setScalar(0.045 + Math.random() * 0.035);
                 mesh.position.copy(pos);
                 const vel = new THREE.Vector3((Math.random() - 0.5) * 6, Math.random() * 5 + 1, (Math.random() - 0.5) * 6);
                 scene.add(mesh);
@@ -2345,7 +2355,7 @@
             for (let i = 0; i < count; i++) {
                 const radius = 0.10 + Math.random() * 0.20;
                 const mat = new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xa3e635 : 0x65a30d, transparent: true, opacity: 0.35 + Math.random() * 0.18, depthWrite: false });
-                const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 8, 6), mat);
+                const mesh = new THREE.Mesh(CLOUD_GEO, mat); mesh.scale.setScalar(radius);
                 mesh.position.copy(centerPos).add(new THREE.Vector3((Math.random() - 0.5) * 0.9, Math.random() * 1.3, (Math.random() - 0.5) * 0.9));
                 scene.add(mesh);
                 const vel = new THREE.Vector3((Math.random() - 0.5) * spread, 0.25 + Math.random() * 1.35, (Math.random() - 0.5) * spread);
@@ -2441,7 +2451,7 @@
                         spawnFloatingDamage(hit.point, shownDamage, isHeadshot || isBloaterWeakPoint);
                         // 普通部位伤害仍由敌人自己的护甲/弱点机制结算，避免重复乘算。
                         const damageForHealth = isHeadshot ? shownDamage : weapon.damage;
-                        const died = enemyRef.takeDamage(damageForHealth, isHeadshot, hit.object);
+                        const died = enemyRef.takeDamage(damageForHealth, isHeadshot, hit.object, weapon.armorPierce || 0);
                         if (died) killedEnemy = true;
                         const impactColor = enemyRef.zombieType === 'armored' && !isHeadshot ? 0xf59e0b : (isHeadshot ? 0xfbbf24 : 0xf43f5e);
                         spawnImpactSparks(hit.point, impactColor, enemyRef.zombieType === 'armored' && !isHeadshot ? 10 : (isHeadshot ? 12 : 7));
@@ -2472,7 +2482,15 @@
         /**************************************************************
          * 7. 感染者与三阶段专属尸王 BOSS 建模及 AI 行为系统
          **************************************************************/
+        // 优化：纹理变体池。每种材质只生成 3 套并在所有僵尸间共用，避免每次刷怪重画 512² 画布与显存泄漏。
+        const GRUNGE_POOL = {};
         function makeGrungeCanvasTexture(kind='skin', seed=1) {
+            const pool = GRUNGE_POOL[kind] || (GRUNGE_POOL[kind] = []);
+            const idx = Math.floor(seed) % 3;
+            if (!pool[idx]) pool[idx] = makeGrungeCanvasTextureRaw(kind, seed);
+            return pool[idx];
+        }
+        function makeGrungeCanvasTextureRaw(kind='skin', seed=1) {
             const c=document.createElement('canvas'); c.width=512; c.height=512;
             const ctx=c.getContext('2d');
             let base = kind==='skin' ? '#6e7568' : (kind==='pants' ? '#292e2b' : '#454943');
@@ -2906,9 +2924,8 @@
                 }
                 // 眼部微型红光源，增强暗场中发光眼效果
                 for (const side of [-1, 1]) {
-                    const glow = new THREE.PointLight(0xff1738, 0.42, 1.35);
-                    glow.position.set(side * 0.09, 1.82, 0.38);
-                    this.group.add(glow);
+                    // 优化：移除动态 PointLight，避免 Boss 刷出时着色器全量重编译造成卡顿（眼睛本身已是自发光材质）
+
                 }
 
                 this.addOverheadHpBar(2.38, 1.1);
@@ -3002,9 +3019,7 @@
                     this.hitParts.push(spine);
                 }
                 // 肉瘤发光点光源，照亮邻近触手与躯干
-                const tumorGlow = new THREE.PointLight(0xff6a18, 0.75, 3.2);
-                tumorGlow.position.set(0, 1.15, 0.65);
-                this.group.add(tumorGlow);
+
 
                 this.addOverheadHpBar(2.48, 1.25);
             }
@@ -3019,9 +3034,9 @@
                 this.group.add(this.hpBarMesh);
             }
 
-            takeDamage(amount, isHead = false, hitObject = null) {
+            takeDamage(amount, isHead = false, hitObject = null, armorPierce = 0) {
                 if (this.dead) return false;
-                if (!isHead && this.stats.defense > 0) amount *= (1 - this.stats.defense);
+                if (!isHead && this.stats.defense > 0) amount *= (1 - this.stats.defense * (1 - armorPierce));
                 if (this.zombieType === 'bloater' && (hitObject === this.bellyMesh || hitObject?.userData?.isBloaterWeakPoint === true)) amount *= 1.65;
                 this.hp = Math.max(0, this.hp - amount);
 
@@ -3075,6 +3090,7 @@
                     }
                 }
                 updateHUD();
+                maybeDropMedkit(this.group.position, this.isBoss);
 
                 const fallInterval = setInterval(() => {
                     // 局部正 Z 为感染者正面，绕 X 正向旋转使尸体朝前扑倒。
@@ -3110,7 +3126,19 @@
                 const aiEyePos = this._aiEyePos.set(this.group.position.x, 1.65, this.group.position.z);
                 const playerEyePos = this._playerEyePos.copy(yawObject.position);
                 const distToPlayer = aiEyePos.distanceTo(playerEyePos);
-                const canSeePlayer = this.isBoss || (distToPlayer <= this.detectRange && hasLineOfSight(aiEyePos, playerEyePos));
+                // 优化：视线射线检测每 0.2 秒才算一次（带随机错峰），而不是每帧
+                this._losTimer = (this._losTimer === undefined ? Math.random() * 0.2 : this._losTimer) - dt;
+                if (this._losTimer <= 0) {
+                    this._losTimer = 0.2;
+                    this._losCache = distToPlayer <= this.detectRange && hasLineOfSight(aiEyePos, playerEyePos);
+                }
+                const canSeePlayer = this.isBoss || (distToPlayer <= this.detectRange && !!this._losCache);
+                // 优化：远处僵尸不参与阴影渲染
+                const wantShadow = distToPlayer < 40 || this.isBoss;
+                if (this._shadowOn !== wantShadow) {
+                    this._shadowOn = wantShadow;
+                    this.group.traverse(o => { if (o.isMesh) o.castShadow = wantShadow; });
+                }
 
                 if (canSeePlayer) {
                     this.state = distToPlayer <= this.attackReach ? 'ATTACK' : 'CHASE';
@@ -3154,7 +3182,7 @@
                         toxinOrigin.y += 2.0;
                         spawnImpactSparks(toxinOrigin, 0x84cc16, 16);
                         spawnCorrosiveCloud(toxinOrigin, 28, 3.4);
-                        if (enemies.filter(e => !e.dead && !e.isBoss).length < MAX_NORMAL_ZOMBIES + 3) {
+                        if (enemies.filter(e => !e.dead && !e.isBoss).length < maxNormalZombies() + 3) {
                             spawnSingleEnemy('runner');
                         }
                         if (distToPlayer < 8.5) {
@@ -3326,7 +3354,7 @@
 
             // 维持场上普通丧尸数量
             const normalAlive = enemies.filter(e => !e.dead && !e.isBoss).length;
-            if (normalAlive < MAX_NORMAL_ZOMBIES && Math.random() < dt * 1.4) {
+            if (normalAlive < maxNormalZombies() && Math.random() < dt * (1.4 + gameState.elapsedTime / 900)) {
                 spawnSingleEnemy();
                 updateHUD();
             }
@@ -3464,6 +3492,7 @@
             if (!weapon) return;
 
             const hpPct = Math.round((gameState.hp / gameState.maxHp) * 100);
+            if (typeof lowHpVignette !== 'undefined') lowHpVignette.style.opacity = gameState.isRunning && hpPct < 40 ? String(Math.min(1, (40 - hpPct) / 30)) : '0';
             document.getElementById('hud-hp-text').textContent = gameState.hp;
             const hpBar = document.getElementById('hud-hp-bar');
             hpBar.style.width = `${hpPct}%`;
@@ -3550,6 +3579,63 @@
             radarCtx.closePath();
             radarCtx.fill();
         }
+
+        // ================= 新增：医疗包（击杀掉落，走近自动拾取） =================
+        const medkits = [];
+        let _medkitGeo = null, _medkitMat = null, _crossMat = null;
+        function maybeDropMedkit(pos, guaranteed = false) {
+            if (!guaranteed && Math.random() > 0.14) return;
+            if (!_medkitGeo) {
+                _medkitGeo = new THREE.BoxGeometry(0.5, 0.3, 0.36);
+                _medkitMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.6, emissive: 0x1f2937, emissiveIntensity: 0.3 });
+                _crossMat = new THREE.MeshBasicMaterial({ color: 0xdc2626 });
+            }
+            const g = new THREE.Group();
+            const box = new THREE.Mesh(_medkitGeo, _medkitMat); g.add(box);
+            const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 0.07), _crossMat); c1.position.y = 0.16; g.add(c1);
+            const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.28), _crossMat); c2.position.y = 0.16; g.add(c2);
+            g.position.set(pos.x, 0.35, pos.z);
+            scene.add(g);
+            medkits.push({ group: g, life: 30, heal: guaranteed ? 60 : 25 });
+        }
+        function updateMedkits(dt, now) {
+            for (let i = medkits.length - 1; i >= 0; i--) {
+                const m = medkits[i];
+                m.life -= dt;
+                m.group.rotation.y += dt * 1.2;
+                m.group.position.y = 0.45 + Math.sin(now * 3 + i) * 0.06;
+                const d = Math.hypot(m.group.position.x - yawObject.position.x, m.group.position.z - yawObject.position.z);
+                if (d < 1.8 && gameState.hp < gameState.maxHp) {
+                    gameState.hp = Math.min(gameState.maxHp, gameState.hp + m.heal);
+                    sound.playPickup();
+                    showAmmoPrompt(`拾取医疗包：生命 +${m.heal}`, 1600);
+                    m.life = 0;
+                    updateHUD();
+                }
+                if (m.life <= 0) {
+                    scene.remove(m.group);
+                    m.group.children.forEach(ch => { if (ch.geometry !== _medkitGeo) ch.geometry.dispose(); });
+                    medkits.splice(i, 1);
+                }
+            }
+        }
+        function clearMedkits() {
+            medkits.forEach(m => scene.remove(m.group));
+            medkits.length = 0;
+        }
+
+        // ================= 新增：冲刺体力 + 低血量暗角 =================
+        const stamina = { value: 100, max: 100, delay: 0 };
+        const lowHpVignette = document.createElement('div');
+        Object.assign(lowHpVignette.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '15', opacity: '0', transition: 'opacity .25s',
+            background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(120,0,0,.75) 100%)' });
+        document.body.appendChild(lowHpVignette);
+        const staminaBar = document.createElement('div');
+        Object.assign(staminaBar.style, { position: 'fixed', left: '50%', bottom: '14px', transform: 'translateX(-50%)', width: '180px', height: '5px', background: 'rgba(15,23,42,.7)', borderRadius: '3px', zIndex: '16', pointerEvents: 'none', opacity: '0', transition: 'opacity .3s' });
+        const staminaFill = document.createElement('div');
+        Object.assign(staminaFill.style, { height: '100%', width: '100%', background: '#38bdf8', borderRadius: '3px' });
+        staminaBar.appendChild(staminaFill);
+        document.body.appendChild(staminaBar);
 
         // ================= 第3组：其他系统 / 补给与可交互道具 =================
         // 绿色弹药箱、红色爆炸油桶、手雷和补给提示在本节生成或更新；按键/按钮绑定在输入事件节。
@@ -3773,7 +3859,7 @@
         /**************************************************************
          * 9. 电脑键鼠 + 手机/平板触控 双系统输入监听
          **************************************************************/
-        const keys = { w: false, a: false, s: false, d: false, space: false };
+        const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
         const joystickInput = { x: 0, y: 0 }; // 手机端摇杆向量
         // 触屏/鼠标快速转向时，第一人称枪模有轻微惯性偏移，视觉上明确响应瞄准输入。
         const weaponAimLag = { x: 0, y: 0 };
@@ -3822,6 +3908,7 @@
             if (code === 'KeyA' || code === 'ArrowLeft') keys.a = true;
             if (code === 'KeyD' || code === 'ArrowRight') keys.d = true;
             if (code === 'Space') keys.space = true;
+            if (code === 'ShiftLeft' || code === 'ShiftRight') keys.shift = true;
 
             if (code === 'KeyR') startReload();
             if (code === 'KeyE') tryCollectAmmo();
@@ -3849,6 +3936,7 @@
             if (code === 'KeyA' || code === 'ArrowLeft') keys.a = false;
             if (code === 'KeyD' || code === 'ArrowRight') keys.d = false;
             if (code === 'Space') keys.space = false;
+            if (code === 'ShiftLeft' || code === 'ShiftRight') keys.shift = false;
         });
 
         // PC 鼠标视角与射击；枪模惯性与移动端一致，但幅度克制。
@@ -4168,6 +4256,8 @@
             enemies.length = 0;
             for (let i = 0; i < 10; i++) spawnSingleEnemy();
 
+            clearMedkits();
+            stamina.value = stamina.max; stamina.delay = 0;
             spawnAmmoPickups();
             spawnExplosiveBarrels();
             updateBossHUD();
@@ -4193,7 +4283,20 @@
         let walkBobTime = 0;
 
         function updatePlayerMovement(dt) {
-            const moveSpeed = gameState.isADS ? 5.6 : 9.2;
+            // 优化：基础移速 9.2 → 6.8（普通僵尸最快 6.2，不再能无脑放风筝）；按住 Shift 冲刺消耗体力
+            const wantsSprint = keys.shift && !gameState.isADS && (keys.w || keys.a || keys.s || keys.d);
+            const sprinting = wantsSprint && stamina.value > 0 && stamina.delay <= 0;
+            let moveSpeed = gameState.isADS ? 4.4 : (sprinting ? 9.4 : 6.8);
+            if (sprinting) {
+                stamina.value = Math.max(0, stamina.value - 28 * dt);
+                if (stamina.value <= 0) stamina.delay = 1.6;
+            } else {
+                stamina.delay = Math.max(0, stamina.delay - dt);
+                if (stamina.delay <= 0) stamina.value = Math.min(stamina.max, stamina.value + 18 * dt);
+            }
+            staminaFill.style.width = (stamina.value / stamina.max * 100) + '%';
+            staminaFill.style.background = stamina.delay > 0 ? '#f43f5e' : '#38bdf8';
+            staminaBar.style.opacity = (stamina.value < stamina.max - 1 || sprinting) ? '1' : '0';
             const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), yawObject.rotation.y);
             const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yawObject.rotation.y);
 
@@ -4299,7 +4402,9 @@
 
             if (gameState.isRunning && !gameState.isPaused && !gameState.isGameOver && !gameState.isUpgradeOpen) {
                 updatePlayerMovement(dt);
+                if (sunLight) { sunLight.target.position.set(yawObject.position.x, 0, yawObject.position.z); sunLight.position.copy(sunLight.target.position).add(SUN_OFFSET); }
                 updateAmmoPickups(dt, nowSeconds);
+                updateMedkits(dt, nowSeconds);
                 updateFifteenMinuteTimeline(dt);
 
                 // 开镜 FOV 缩放（狙击枪 8.0X 倍镜缩放至 16 度）
@@ -4401,6 +4506,7 @@
                 t.line.material.opacity = Math.max(0, t.life * 12);
                 if (t.life <= 0) {
                     scene.remove(t.line);
+                    t.line.geometry.dispose(); t.line.material.dispose();
                     bulletTracers.splice(i, 1);
                 }
             }
@@ -4414,6 +4520,7 @@
                 if (p.material) p.material.opacity = Math.max(0, p.life / (p.maxLife || 0.32)) * (p.expandRate ? 0.48 : 1);
                 if (p.life <= 0) {
                     scene.remove(p.mesh);
+                    if (p.material) p.material.dispose();
                     particles.splice(i, 1);
                 }
             }
@@ -4433,6 +4540,7 @@
             buildCityArena();
             // 此函数此前仅定义未调用，导致火桶火光、贴地烟雾、屋顶光束和远景感染者不会显示。
             buildUrbanDebrisAndAtmosphere();
+            ['skin','cloth','pants'].forEach(k => { for (let i = 0; i < 3; i++) makeGrungeCanvasTexture(k, i); });
             initWeaponsState();
             animate();
         };
