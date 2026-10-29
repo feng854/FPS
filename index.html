@@ -19,7 +19,7 @@
         }
 
         body, html {
-            margin: 0; 
+            margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
@@ -79,7 +79,7 @@
         }
 
         /* 手机/平板专属 HUD：弹药框缩小并半透明，战术按钮围绕开火键排列 */
-       body.mobile-ui-active #bottom-hud-panels { left: 7px !important; right: 7px !important; bottom: 6px !important; gap: 4px !important; align-items: end !important; }
+        body.mobile-ui-active #bottom-hud-panels { left: 7px !important; right: 7px !important; bottom: 6px !important; gap: 4px !important; align-items: end !important; }
         body.mobile-ui-active #hp-panel { width: clamp(88px, 17vw, 140px) !important; padding: 4px 6px !important; border-radius: 10px !important; background: rgba(15,23,42,.48) !important; }
         body.mobile-ui-active #ammo-panel { width: clamp(76px, 13vw, 112px) !important; min-width:76px !important; padding: 4px 5px !important; border-radius: 0 9px 9px 0 !important; background: rgba(15,23,42,.42) !important; border-color: rgba(148,163,184,.28) !important; margin-left:-2px !important; }
         body.mobile-ui-active #hp-panel .hp-caption { font-size: 8px !important; gap: 3px !important; }
@@ -221,6 +221,22 @@
             #ammo-panel, body.mobile-ui-active #ammo-panel { min-width:62px !important; padding:2px 6px !important; }
             #hud-ammo-mag, body.mobile-ui-active #hud-ammo-mag { font-size:17px !important; }
         }
+
+        /* ===== 手机版：血条 / 主副武器 / 弹药框再缩小；开火键移到右侧空白处 ===== */
+        body.mobile-ui-active #hp-panel { width: 76px !important; padding: 2px 5px !important; border-radius: 8px !important; }
+        body.mobile-ui-active #hp-panel .hp-caption { font-size: 7px !important; gap: 2px !important; }
+        body.mobile-ui-active #hud-hp-text { font-size: 11px !important; }
+        body.mobile-ui-active #hp-panel #hud-hp-bar { height: 3px !important; }
+        body.mobile-ui-active #weapon-switch-panel { padding: 2px !important; gap: 2px !important; }
+        body.mobile-ui-active #weapon-switch-panel > div { padding: 2px 4px !important; gap: 3px !important; }
+        body.mobile-ui-active #weapon-switch-panel .font-bold { font-size: 8px !important; }
+        body.mobile-ui-active #weapon-switch-panel > div > span:first-child { font-size: 6px !important; }
+        body.mobile-ui-active #weapon-switch-panel > div > div > div:first-child { font-size: 5.5px !important; }
+        body.mobile-ui-active #ammo-panel { min-width: 52px !important; padding: 2px 6px !important; }
+        body.mobile-ui-active #hud-ammo-mag { font-size: 15px !important; }
+        body.mobile-ui-active #hud-ammo-reserve { font-size: 8px !important; }
+        body.mobile-ui-active #ammo-panel #hud-weapon-mode { font-size: 6px !important; }
+        body.mobile-ui-active #mobile-action-stack .radial-fire { transform: translate(-38px, -52px) !important; }
     </style>
 </head>
 <body class="text-slate-100">
@@ -1425,10 +1441,10 @@
         hemi.diffuse = new B.Color3(0.78, 0.84, 0.88);
         hemi.groundColor = new B.Color3(0.30, 0.28, 0.26);
         hemi.specular = new B.Color3(0.1, 0.1, 0.1);
-        const HEMI_BASE = 0.95;
+        let HEMI_BASE = 0.95;   // 昼夜系统会每帧改写
         hemi.intensity = HEMI_BASE;
 
-        const sunDir = new B.Vector3(-0.55, -0.62, -0.5).normalize();
+        const sunDir = new B.Vector3(-0.68, -0.42, -0.60).normalize();   // 仰角约 25°，方位与天空里的太阳 / 夜里的月亮一致
         const sun = new B.DirectionalLight('sun', sunDir, scene);
         sun.position = new B.Vector3(48, 60, 42);
         sun.diffuse = new B.Color3(1.0, 0.77, 0.54);
@@ -1477,6 +1493,9 @@
 
         // ---------- 自适应画质 ----------
         const GFX = { mode: URL_Q || 'auto', scaleLevel: 1, tier: 0, basePR: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.35 : 1.8) };
+        // 凹凸贴图登记表：只在桌面端、特效档 < 2 时启用（手机不启用，省片元开销）
+        const BUMPS = [];
+        function setBumpsEnabled(on) { for (let i = 0; i < BUMPS.length; i++) BUMPS[i].mat.bumpTexture = on ? BUMPS[i].tex : null; }
         function setRenderScale(pr) {            // pr = 期望渲染像素比
             GFX.pr = clamp(pr, 0.6, 2);
             engine.setHardwareScalingLevel(1 / GFX.pr);
@@ -1486,6 +1505,7 @@
             const on = (v) => { try { v(); } catch (e) {} };
             on(() => { if (pipeline) { pipeline.grainEnabled = tier < 1 && !IS_TOUCH; pipeline.chromaticAberrationEnabled = tier < 1 && !IS_TOUCH; pipeline.bloomEnabled = tier < 2; } });
             on(() => { sun.shadowEnabled = tier < 2; });
+            on(() => { setBumpsEnabled(!IS_TOUCH && tier < 2); });
             on(() => { if (pipeline && !IS_TOUCH) pipeline.samples = tier < 3 && engine.webGLVersion > 1 ? 4 : 1; if (pipeline) pipeline.fxaaEnabled = tier >= 3 || IS_TOUCH; });
         }
         function setQualityMode(mode) {
@@ -1544,7 +1564,58 @@
         }
         const matVC = (key, spec = 0.05, extra = {}) => stdMat(key, Object.assign({ spec }, extra)); // 白漫反射 + 顶点色
 
-        const rgb = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+                // ---------- 凹凸（法线）贴图：由高度图程序生成，手机返回 null ----------
+        function heightToNormal(name, w, h, hf, strength, uScale, vScale) {
+            const out = new B.DynamicTexture(name, { width: w, height: h }, scene, true);
+            const ctx = out.getContext(), img = ctx.createImageData(w, h), d = img.data;
+            for (let y = 0; y < h; y++) {
+                const yu = ((y - 1 + h) % h) * w, yd = ((y + 1) % h) * w, row = y * w;
+                for (let x = 0; x < w; x++) {
+                    const xl = (x - 1 + w) % w, xr = (x + 1) % w;
+                    const dx = (hf[row + xr] - hf[row + xl]) * strength, dy = (hf[yd + x] - hf[yu + x]) * strength;
+                    const inv = 1 / Math.sqrt(dx * dx + dy * dy + 1), o = (row + x) * 4;
+                    d[o] = (-dx * inv * 0.5 + 0.5) * 255; d[o + 1] = (dy * inv * 0.5 + 0.5) * 255; d[o + 2] = (inv * 0.5 + 0.5) * 255; d[o + 3] = 255;
+                }
+            }
+            ctx.putImageData(img, 0, 0); out.update(true);
+            out.uScale = uScale || 1; out.vScale = vScale || 1;
+            out.anisotropicFilteringLevel = 4;
+            return out;
+        }
+        // 用漫反射贴图的亮度当高度（裂缝=凹槽，颗粒=凸起），与漫反射完全对齐
+        function bumpFromTex(tex, strength = 6) {
+            if (IS_TOUCH) return null;
+            try {
+                const sz = tex.getSize(), w = sz.width, h = sz.height;
+                const px = tex.getContext().getImageData(0, 0, w, h).data, hf = new Float32Array(w * h);
+                for (let i = 0; i < w * h; i++) hf[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) / 255;
+                return heightToNormal('bump_' + tex.name, w, h, hf, strength, tex.uScale, tex.vScale);
+            } catch (e) { console.warn('bump failed', e); return null; }
+        }
+        function attachBump(mat, bumpTex, level = 0.9) {
+            if (!bumpTex) return;
+            bumpTex.level = level;
+            BUMPS.push({ mat, tex: bumpTex });
+            if (!IS_TOUCH && GFX.tier < 2) mat.bumpTexture = bumpTex;
+        }
+        // ---------- 环境反射：把天空贴图当等距柱状反射图；强度用菲涅尔右色控制（掠射角强、正对弱） ----------
+        const REFLS = [];                     // { fp, base }
+        let ENVREFL = null;
+        function makeReflective(mat, strength) {
+            try {
+                if (!ENVREFL) { ENVREFL = texSky(); ENVREFL.coordinatesMode = B.Texture.EQUIRECTANGULAR_MODE; }
+                mat.reflectionTexture = ENVREFL;
+                const fp = new B.FresnelParameters();
+                fp.bias = 0.04; fp.power = 3;
+                fp.leftColor = new B.Color3(0, 0, 0);
+                fp.rightColor = new B.Color3(strength, strength, strength);
+                mat.reflectionFresnelParameters = fp;
+                REFLS.push({ fp, base: strength });
+            } catch (e) { console.warn('reflection failed', e); }
+        }
+        function setReflectionScale(k) { for (let i = 0; i < REFLS.length; i++) { const c = REFLS[i].fp.rightColor, v = REFLS[i].base * k; c.r = v; c.g = v; c.b = v; } }
+
+                const rgb = (hex) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
         function paint(mesh, c) {
             const n = mesh.getTotalVertices();
             const a = new Float32Array(n * 4);
@@ -1673,7 +1744,27 @@
                 c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
                 wins.forEach(o => { if (!o.lit || o.broken) return; const g = geom(w, h, o.r, o.c); c.fillStyle = `rgba(255,${170 + Math.random() * 40 | 0},${90 + Math.random() * 30 | 0},0.9)`; c.fillRect(g.x, g.y, g.w, g.h); });
             });
-            return { map, glow };
+            let bump = null;
+            if (!IS_TOUCH) {
+                try {
+                    const hc = document.createElement('canvas'); hc.width = W; hc.height = H;
+                    const c = hc.getContext('2d');
+                    c.fillStyle = '#808080'; c.fillRect(0, 0, W, H);
+                    speckle(c, W, H, 5000, 2.0);
+                    for (let r = 0; r <= rows; r++) { c.fillStyle = '#585858'; c.fillRect(0, r * (H / rows) - 3, W, 6); }   // 楼层分隔凹槽
+                    wins.forEach(o => {
+                        const g = geom(W, H, o.r, o.c);
+                        c.fillStyle = '#2c2c2c'; c.fillRect(g.x - 4, g.y - 4, g.w + 8, g.h + 8);        // 窗洞凹陷
+                        c.fillStyle = '#404040'; c.fillRect(g.x, g.y, g.w, g.h);
+                        c.fillStyle = '#9a9a9a'; c.fillRect(g.x + g.w / 2 - 1.5, g.y, 3, g.h); c.fillRect(g.x, g.y + g.h / 2 - 1.5, g.w, 3);  // 窗框凸起
+                        c.fillStyle = '#b0b0b0'; c.fillRect(g.x - 5, g.y + g.h + 3, g.w + 10, 4);       // 窗台
+                    });
+                    const px = c.getImageData(0, 0, W, H).data, hf = new Float32Array(W * H);
+                    for (let i = 0; i < W * H; i++) hf[i] = px[i * 4] / 255;
+                    bump = heightToNormal('facadeN' + baseHex, W, H, hf, 5.0, 1, 1);
+                } catch (e) { console.warn('facade bump failed', e); }
+            }
+            return { map, glow, bump };
         }
         function texNoiseMetal(base, rust) {
             return dynTex('metal' + base, 256, 256, (c, w, h) => {
@@ -1689,7 +1780,7 @@
                 g.addColorStop(0.00, '#27384b'); g.addColorStop(0.25, '#5c7384'); g.addColorStop(0.40, '#a49c92');
                 g.addColorStop(0.47, '#e2a96c'); g.addColorStop(0.50, '#f0bc80'); g.addColorStop(0.55, '#8e8579'); g.addColorStop(1.0, '#566066');
                 c.fillStyle = g; c.fillRect(0, 0, w, h);
-                const sx = w * 0.30, sy = h * 0.475;
+                const sx = w * 0.635, sy = h * 0.36;
                 const sg = c.createRadialGradient(sx, sy, 0, sx, sy, 170);
                 sg.addColorStop(0, 'rgba(255,236,190,0.95)'); sg.addColorStop(0.15, 'rgba(255,200,130,0.55)'); sg.addColorStop(1, 'rgba(255,170,100,0)');
                 c.fillStyle = sg; c.fillRect(0, 0, w, h);
@@ -1699,6 +1790,27 @@
                     c.fillStyle = `rgba(${150 + near * 90 | 0},${130 + near * 50 | 0},${120 + near * 10 | 0},${0.05 + Math.random() * 0.10})`;
                     c.beginPath(); c.ellipse(x, y, rw, rh, 0, 0, 7); c.fill();
                 }
+            }, { mip: false });
+        }
+        // 夜空：深蓝渐变 + 星星 + 月亮（月亮位置与太阳同方位，月光方向 = 阳光方向）
+        function texSkyNight() {
+            return dynTex('skyNight', 1024, 512, (c, w, h) => {
+                const g = c.createLinearGradient(0, 0, 0, h);
+                g.addColorStop(0.00, '#03050c'); g.addColorStop(0.30, '#070b18'); g.addColorStop(0.46, '#1a2038');
+                g.addColorStop(0.50, '#2a2542'); g.addColorStop(0.54, '#10131f'); g.addColorStop(1.0, '#0a0d14');
+                c.fillStyle = g; c.fillRect(0, 0, w, h);
+                for (let i = 0; i < 320; i++) {
+                    const x = Math.random() * w, y = Math.random() * h * 0.46, r = 0.5 + Math.random() * 1.1, a = 0.25 + Math.random() * 0.7;
+                    c.fillStyle = `rgba(${215 + Math.random() * 40 | 0},${225 + Math.random() * 30 | 0},255,${a})`;
+                    c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+                }
+                const mx = w * 0.635, my = h * 0.36;
+                const mg = c.createRadialGradient(mx, my, 0, mx, my, 90);
+                mg.addColorStop(0, 'rgba(200,215,255,0.55)'); mg.addColorStop(0.25, 'rgba(120,145,210,0.22)'); mg.addColorStop(1, 'rgba(60,80,140,0)');
+                c.fillStyle = mg; c.fillRect(mx - 100, my - 100, 200, 200);
+                c.fillStyle = '#eef2fb'; c.beginPath(); c.arc(mx, my, 15, 0, 7); c.fill();
+                c.fillStyle = 'rgba(150,165,195,0.45)';
+                for (const [dx, dy, r] of [[-5, -3, 3.6], [4, 3, 2.8], [-1, 6, 2.2], [6, -5, 1.8]]) { c.beginPath(); c.arc(mx + dx, my + dy, r, 0, 7); c.fill(); }
             }, { mip: false });
         }
         function texRadial(name, inner, outer, size = 64) {
@@ -1761,12 +1873,25 @@
             });
         }
 
-        // 天空盒：半径 450 的反向球，始终以相机为中心；位于最远处，不需要特殊渲染顺序
+        // 天空盒：自定义着色器，按视线方向采样白天 / 夜晚两张贴图（不依赖球体 UV，方向固定）。
+        // tint 用来染色（黄昏偏紫、Boss 偏红），nightK 0→1 把白天渐变为夜空。
+        const SKY = { mat: null, tint: new B.Color3(1, 1, 1) };
         (function buildSky() {
-            const sky = B.MeshBuilder.CreateSphere('sky', { diameter: 900, segments: 16 }, scene);
-            const m = stdMat('skyMat', { unlit: true, twoSided: true, noFog: true, spec: 0, diffuse: [0, 0, 0] });
-            m.emissiveTexture = texSky(); m.emissiveColor = new B.Color3(1, 1, 1);
+            const sky = B.MeshBuilder.CreateSphere('sky', { diameter: 900, segments: 24 }, scene);
+            B.Effect.ShadersStore['dsSkyVertexShader'] =
+                'precision highp float; attribute vec3 position; uniform mat4 worldViewProjection; varying vec3 vDir;' +
+                'void main(){ vDir = position; gl_Position = worldViewProjection * vec4(position, 1.0); }';
+            B.Effect.ShadersStore['dsSkyFragmentShader'] =
+                'precision highp float; varying vec3 vDir; uniform sampler2D dayTex; uniform sampler2D nightTex; uniform vec3 tint; uniform float nightK;' +
+                'void main(){ vec3 d = normalize(vDir); float u = atan(d.x, d.z) * 0.15915494 + 0.5; float v = asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5;' +
+                'vec3 a = texture2D(dayTex, vec2(u, v)).rgb * tint; vec3 b = texture2D(nightTex, vec2(u, v)).rgb;' +
+                'gl_FragColor = vec4(mix(a, b, nightK), 1.0); }';
+            const m = new B.ShaderMaterial('skyMat', scene, 'dsSky', { attributes: ['position'], uniforms: ['worldViewProjection', 'tint', 'nightK'], samplers: ['dayTex', 'nightTex'] });
+            m.setTexture('dayTex', texSky()); m.setTexture('nightTex', texSkyNight());
+            m.setColor3('tint', SKY.tint); m.setFloat('nightK', 0);
+            m.backFaceCulling = false; m.disableDepthWrite = true;
             sky.material = m; sky.infiniteDistance = true; sky.isPickable = false; sky.applyFog = false;
+            SKY.mat = m;
         })();
 
         window.addEventListener('resize', () => engine.resize());
@@ -1779,6 +1904,7 @@
         const FIRE_SPOTS = [[-15, 28], [16, -29], [-32, -16], [33, 18], [0, 56], [0, -56], [-56, 0], [56, 0]];
         const roofLights = [];     // 屋顶探照光束（旋转）
         let worldReady = false;
+        const WREF = { variants: [], lampMat: null, pools: null };   // 昼夜系统要改的对象
 
         function buildWorld() {
             const props = [];       // 顶点色小部件（统一合并成一个网格）
@@ -1787,16 +1913,35 @@
 
             // ---------- 地面 ----------
             const ground = B.MeshBuilder.CreateGround('ground', { width: 180, height: 180, subdivisions: 1 }, scene);
-            ground.material = stdMat('groundMat', { tex: texConcrete('#777b7c', 10), spec: 0.03 });
+            const gTex = texConcrete('#777b7c', 10);
+            const groundMat = stdMat('groundMat', { tex: gTex, spec: 0.03 });
+            attachBump(groundMat, bumpFromTex(gTex, 6));
+            ground.material = groundMat;
             ground.receiveShadows = true; staticMesh(ground);
 
             // 十字主干道
             const roadTex = texAsphalt(IS_TOUCH ? 8 : 10);
-            const roadMat = stdMat('roadMat', { tex: roadTex, spec: 0.1, power: 40, zOffset: -1 });
+            const roadMat = stdMat('roadMat', { tex: roadTex, spec: 0.16, power: 48, zOffset: -1 });
+            const roadMatV = stdMat('roadMatV', { tex: roadTex, spec: 0.16, power: 48, zOffset: -2 });
+            const roadBump = bumpFromTex(roadTex, 7);
+            attachBump(roadMat, roadBump); attachBump(roadMatV, roadBump);
+            makeReflective(roadMat, 0.22); makeReflective(roadMatV, 0.22);     // 湿路面：掠射角才反光
             const roadH = B.MeshBuilder.CreateGround('roadH', { width: 180, height: 18 }, scene); roadH.position.y = 0.02;
             const roadV = B.MeshBuilder.CreateGround('roadV', { width: 18, height: 180 }, scene); roadV.position.y = 0.021;
-            roadH.material = roadMat; roadV.material = stdMat('roadMatV', { tex: roadTex, spec: 0.1, power: 40, zOffset: -2 });
+            roadH.material = roadMat; roadV.material = roadMatV;
             [roadH, roadV].forEach(r => { r.receiveShadows = true; staticMesh(r); });
+            // 水洼：深色半透明椭圆 + 强反射（映出天空），随机散在路面
+            const puddles = [];
+            const pdPos = [[-3, 6], [4, 14], [-5, -9], [3, -18], [6, 28], [-4, 40], [5, -32], [-3, -46], [14, 3], [-20, -3], [30, 4], [-38, 3], [24, -4], [-12, 4], [40, -3], [3, 58]];
+            pdPos.forEach(([x, z], i) => {
+                const d = B.MeshBuilder.CreateDisc('pd', { radius: 1, tessellation: 22 }, scene);
+                d.rotation.x = Math.PI / 2; d.position.set(x, 0.045, z);
+                d.scaling.set(1.1 + (i % 4) * 0.55, 1.6 + ((i * 7) % 5) * 0.4, 1);   // 旋转后 x/y 对应地面 x/z
+                paint(d, [1, 1, 1]); puddles.push(d);
+            });
+            const puddleMat = stdMat('puddleMat', { diffuse: [0.05, 0.06, 0.08], spec: 1.0, power: 140, alpha: 0.8, twoSided: true, zOffset: -6, noDepthWrite: true });
+            makeReflective(puddleMat, 0.95);
+            const puddleMesh = mergeParts(puddles, 'puddles', puddleMat); staticMesh(puddleMesh);
 
             // 标线：双黄中心线、白色虚线、斑马线（顶点色小平面合并）
             const marks = [];
@@ -1830,7 +1975,9 @@
                 const m = B.MeshBuilder.CreateBox('wall', { width: w, height: 8, depth: d }, scene);
                 m.position.set(x, 4, z); facadeUV(m, 8, 8); paint(m, [0.82, 0.84, 0.86]); walls.push(m);
             });
-            const wallMesh = mergeParts(walls, 'walls', stdMat('wallMat', { tex: texConcrete('#5d6670', 1), spec: 0.03 }));
+            const wTex = texConcrete('#5d6670', 1), wallMat = stdMat('wallMat', { tex: wTex, spec: 0.03 });
+            attachBump(wallMat, bumpFromTex(wTex, 5));
+            const wallMesh = mergeParts(walls, 'walls', wallMat);
             wallMesh.receiveShadows = true; staticMesh(wallMesh); addCaster(wallMesh);
             const wh = 84.2;
             for (const y of [8.35, 8.78, 9.12]) {
@@ -1843,7 +1990,13 @@
 
             // ---------- 建筑 ----------
             const tints = ['#4a5568', '#3b4559', '#52525b'];
-            const variants = tints.map((t, i) => { const f = texFacade(t, 0.22 + i * 0.07); return stdMat('facade' + i, { tex: f.map, emissiveTex: f.glow, spec: 0.05 }); });
+            const variants = tints.map((t, i) => {
+                const f = texFacade(t, 0.22 + i * 0.07);
+                const m = stdMat('facade' + i, { tex: f.map, emissiveTex: f.glow, spec: 0.05 });
+                attachBump(m, f.bump, 1.0);
+                return m;
+            });
+            WREF.variants = variants;
             const specs = [
                 { x: 24, z: 24, w: 14, d: 14, h: 24 }, { x: 48, z: 22, w: 16, d: 12, h: 32 }, { x: 25, z: 50, w: 14, d: 16, h: 20 }, { x: 54, z: 52, w: 18, d: 18, h: 36 },
                 { x: -24, z: 24, w: 14, d: 14, h: 28 }, { x: -50, z: 24, w: 16, d: 14, h: 22 }, { x: -26, z: 52, w: 15, d: 15, h: 30 }, { x: -55, z: 55, w: 18, d: 16, h: 26 },
@@ -1885,19 +2038,23 @@
             });
 
             // ---------- 路灯 ----------
+            const pools = [];
             [-68, -42, 42, 68].forEach(z => [-12, 12].forEach(x => {
                 const s = x < 0 ? 1 : -1;
                 P('cyl', [0.18, 0.28, 6.5, 10], 0x343a3e, [x, 3.25, z]);
                 P('box', [1.2, 0.08, 0.08], 0x343a3e, [x + s * 0.45, 6.35, z]);
                 lamps.push(part('box', [0.38, 0.16, 0.28], [1.0, 0.85, 0.55], [x + s * 0.95, 6.25, z]));
+                const pool = B.MeshBuilder.CreateDisc('lp', { radius: 7, tessellation: 20 }, scene);     // 夜里的地面光斑（假光照，不占灯数）
+                pool.rotation.x = Math.PI / 2; pool.position.set(x + s * 0.95, 0.05, z); paint(pool, [1, 1, 1]); pools.push(pool);
             }));
             // ---------- 车辆 ----------
             const paints = [0x565e63, 0x343d48, 0x77736b, 0x6a3430];
+            const cars = [];
             const addCar = (cx, cz, yaw, ci) => {
                 const cs = Math.cos(yaw), sn = Math.sin(yaw);
                 const cp = (shape, dims, color, lx, ly, lz, rx = 0) => {
                     const m = part(shape, dims, color, [cx + lx * cs + lz * sn, ly, cz - lx * sn + lz * cs], [rx, yaw, 0]);
-                    props.push(m); return m;
+                    cars.push(m); return m;
                 };
                 const paintC = paints[ci % paints.length];
                 cp('box', [1.92, 0.34, 3.85], 0x17191a, 0, 0.38, 0);
@@ -1919,6 +2076,8 @@
             // 路牌
             [[-10, 10], [10, -10], [-42, 8], [42, -8]].forEach(([x, z]) => { P('cyl', [0.09, 0.12, 2.2, 8], 0x555c60, [x, 1.1, z]); P('box', [0.72, 0.55, 0.08], 0x2c5968, [x, 2.1, z]); });
             // ---------- 掩体：集装箱 / 混凝土路障 ----------
+            const metals = [];
+            const M = (...a) => { const m = part(...a); metals.push(m); return m; };
             const covers = [
                 { x: 12, z: 0, w: 3.2, h: 2.4, d: 6.5, c: 1 }, { x: -12, z: 0, w: 3.2, h: 2.4, d: 6.5, c: 1 }, { x: 0, z: 15, w: 6.5, h: 2.6, d: 3.0, c: 1 }, { x: 0, z: -15, w: 6.5, h: 2.6, d: 3.0, c: 1 },
                 { x: 36, z: 0, w: 4.5, h: 2.6, d: 4.5, c: 1 }, { x: -36, z: 0, w: 4.5, h: 2.6, d: 4.5, c: 1 }, { x: 0, z: 38, w: 4.5, h: 2.6, d: 4.5, c: 1 }, { x: 0, z: -38, w: 4.5, h: 2.6, d: 4.5, c: 1 },
@@ -1928,11 +2087,11 @@
                 addBox(c.x, c.h / 2, c.z, c.w, c.h, c.d);
                 if (c.c) {
                     const col = [0x55594d, 0x4b5a58, 0x5a4d44][i % 3];
-                    P('box', [c.w, c.h, c.d], col, [c.x, c.h / 2, c.z]);
+                    M('box', [c.w, c.h, c.d], col, [c.x, c.h / 2, c.z]);
                     const rc = Math.max(4, Math.floor(c.w / 0.28));
                     for (let r = 0; r < rc; r++) {
                         const rx = c.x - c.w / 2 + 0.14 + r * (c.w - 0.28) / (rc - 1);
-                        P('box', [0.045, c.h * 0.94, c.d + 0.05], 0x343a35, [rx, c.h / 2, c.z]);
+                        M('box', [0.045, c.h * 0.94, c.d + 0.05], 0x343a35, [rx, c.h / 2, c.z]);
                     }
                     for (const sg of [-1, 1]) P('box', [0.13, c.h + 0.06, 0.14], 0x343a35, [c.x + sg * (c.w / 2 - 0.07), c.h / 2, c.z + c.d / 2 + 0.02]);
                     for (let r = 0; r < 3; r++) P('box', [0.05, 0.35 + Math.random() * 0.45, 0.02], 0x6a4936, [c.x + (Math.random() - 0.5) * c.w, 0.2 + Math.random() * (c.h - 0.4), c.z + c.d / 2 + 0.06]);
@@ -1967,8 +2126,20 @@
             // ---------- 合并输出 ----------
             const propMesh = mergeParts(props, 'props', matVC('propMat', 0.12));
             propMesh.receiveShadows = true; staticMesh(propMesh); addCaster(propMesh);
-            const lampMesh = mergeParts(lamps, 'lamps', stdMat('lampMat', { unlit: true, diffuse: [1, 0.82, 0.5], emissive: [1.4, 1.0, 0.55], spec: 0 }));
+            const lampMat = stdMat('lampMat', { unlit: true, diffuse: [1, 0.82, 0.5], emissive: [1.4, 1.0, 0.55], spec: 0 });
+            const lampMesh = mergeParts(lamps, 'lamps', lampMat);
             staticMesh(lampMesh);
+            WREF.lampMat = lampMat;
+            // 汽车：高光 + 天空反射；集装箱：金属反光
+            const carMat = stdMat('carMat', { spec: 0.65, power: 90 }); makeReflective(carMat, 0.5);
+            const carMesh = mergeParts(cars, 'cars', carMat); carMesh.receiveShadows = true; staticMesh(carMesh); addCaster(carMesh);
+            const metalMat = stdMat('metalMat', { spec: 0.4, power: 50 }); makeReflective(metalMat, 0.2);
+            const metalMesh = mergeParts(metals, 'metals', metalMat); metalMesh.receiveShadows = true; staticMesh(metalMesh); addCaster(metalMesh);
+            // 路灯光斑：加法混合，白天不可见、夜里由昼夜系统淡入
+            const poolMat = stdMat('lampPoolMat', { tex: texRadial('lampPoolTex', 'rgba(255,205,130,0.55)', 'rgba(255,205,130,A)', 128), alphaTex: true, unlit: true, emissive: [1, 0.8, 0.5], diffuse: [0, 0, 0], additive: true, noDepthWrite: true, twoSided: true, noFog: true, spec: 0, zOffset: -8 });
+            const poolMesh = mergeParts(pools, 'lampPools', poolMat); staticMesh(poolMesh);
+            poolMesh.visibility = 0; poolMesh.setEnabled(false);
+            WREF.pools = poolMesh;
             worldReady = true;
         }
 
@@ -1977,6 +2148,72 @@
                 const r = roofLights[i];
                 r.pivot.rotation.y = r.base + Math.sin(now * r.speed) * 0.85;
             }
+        }
+
+
+        // ======================================================================
+        // 昼夜推进：15 分钟里天色从黄昏渐变到深夜（月光、星空、路灯光斑、窗户更亮）；
+        // Boss 在场时整体偏红。所有数值集中在 DN_KEYS，想更亮/更暗直接改这里。
+        //   t      关键帧时间（秒）          sunI/sunC  太阳（夜里即月光）强度/颜色
+        //   hemi*  环境光强度/天空色/地面色   fog/dens   雾色/浓度       exp 曝光
+        //   tint   白天天空贴图染色         night      夜空混合 0~1    lamp 路灯  win 窗户自发光
+        //   refl   环境反射强度倍率
+        // ======================================================================
+        const DN_KEYS = [
+            { t: 0,   sunI: 1.35, sunC: [1.00, 0.77, 0.54], hemi: 0.95, hemiD: [0.78, 0.84, 0.88], hemiG: [0.30, 0.28, 0.26], fog: [0.467, 0.518, 0.545], dens: 0.0085, exp: 1.15, tint: [1.00, 1.00, 1.00], night: 0.00, lamp: 0.0, win: 1.0, refl: 1.0 },
+            { t: 420, sunI: 0.85, sunC: [1.00, 0.50, 0.28], hemi: 0.70, hemiD: [0.68, 0.58, 0.72], hemiG: [0.26, 0.21, 0.25], fog: [0.34, 0.28, 0.34],   dens: 0.0098, exp: 1.12, tint: [1.00, 0.70, 0.76], night: 0.20, lamp: 0.7, win: 1.4, refl: 0.8 },
+            { t: 900, sunI: 0.38, sunC: [0.52, 0.64, 1.00], hemi: 0.55, hemiD: [0.36, 0.45, 0.70], hemiG: [0.12, 0.14, 0.20], fog: [0.075, 0.095, 0.17], dens: 0.0125, exp: 1.22, tint: [0.45, 0.50, 0.80], night: 1.00, lamp: 1.0, win: 1.9, refl: 0.3 }
+        ];
+        const DN = { boss: 0, last: -1 };
+        const _dnv = {};
+        const _lerpArr = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+        function sampleDayNight(t) {
+            let i = 0;
+            while (i < DN_KEYS.length - 2 && t > DN_KEYS[i + 1].t) i++;
+            const a = DN_KEYS[i], b = DN_KEYS[i + 1], k = clamp((t - a.t) / (b.t - a.t), 0, 1);
+            const o = _dnv;
+            for (const key in a) {
+                if (key === 't') continue;
+                o[key] = Array.isArray(a[key]) ? _lerpArr(a[key], b[key], k) : a[key] + (b[key] - a[key]) * k;
+            }
+            return o;
+        }
+        function updateDayNight(dt) {
+            const t = gameState.isRunning || gameState.isGameOver ? gameState.elapsedTime : 0;
+            const target = gameState.activeBoss && !gameState.activeBoss.dead ? 1 : 0;
+            DN.boss += (target - DN.boss) * Math.min(1, dt * 1.5);
+            const key = Math.round(t * 4) + ':' + Math.round(DN.boss * 50);      // 每 0.25 秒或 Boss 渐变时才重算
+            if (key === DN.last) return;
+            DN.last = key;
+            const v = sampleDayNight(t), r = DN.boss;
+            const red = (c, k) => _lerpArr(c, [0.55, 0.05, 0.06], k * r);
+            const fog = red(v.fog, 0.35), hemiD = red(v.hemiD, 0.25), tint = red(v.tint, 0.30);
+
+            scene.clearColor.r = fog[0]; scene.clearColor.g = fog[1]; scene.clearColor.b = fog[2];
+            scene.fogColor.r = fog[0]; scene.fogColor.g = fog[1]; scene.fogColor.b = fog[2];
+            scene.fogDensity = v.dens;
+            hemi.diffuse.r = hemiD[0]; hemi.diffuse.g = hemiD[1]; hemi.diffuse.b = hemiD[2];
+            hemi.groundColor.r = v.hemiG[0]; hemi.groundColor.g = v.hemiG[1]; hemi.groundColor.b = v.hemiG[2];
+            HEMI_BASE = v.hemi;
+            sun.intensity = v.sunI;
+            sun.diffuse.r = v.sunC[0]; sun.diffuse.g = v.sunC[1]; sun.diffuse.b = v.sunC[2];
+            if (pipeline && pipeline.imageProcessing) pipeline.imageProcessing.exposure = v.exp;
+
+            if (SKY.mat) {
+                SKY.tint.r = tint[0]; SKY.tint.g = tint[1]; SKY.tint.b = tint[2];
+                SKY.mat.setColor3('tint', SKY.tint);
+                SKY.mat.setFloat('nightK', v.night);
+            }
+            if (WREF.lampMat) {
+                const e = 1 + v.lamp * 0.9;
+                WREF.lampMat.emissiveColor.r = 1.4 * e; WREF.lampMat.emissiveColor.g = 1.0 * e; WREF.lampMat.emissiveColor.b = 0.55 * e;
+            }
+            for (let i = 0; i < WREF.variants.length; i++) { const m = WREF.variants[i]; if (m.emissiveTexture) m.emissiveTexture.level = v.win; }
+            if (WREF.pools) {
+                WREF.pools.setEnabled(v.lamp > 0.03);
+                WREF.pools.visibility = Math.min(1, v.lamp * 0.9);
+            }
+            setReflectionScale(v.refl);
         }
 
 
@@ -2584,18 +2821,32 @@
             if (ZA.ready) return;
             ZA.ready = true;
             const mats = [0, 1, 2].map(i => stdMat('zomMat' + i, { tex: texGrunge(i), spec: 0.03 }));
-            const skins = [0x7c8474, 0x6e7568, 0x86826e], skinsD = [0x4c5246, 0x444a40, 0x55523f];
-            const shirts = [0x4d524a, 0x5e483d, 0x3d4b53], pants = [0x2b312e, 0x33302b, 0x262b33];
-            const wound = 0x3a2a26, boot = 0x211f1b, boneC = 0xc9c3a9, claw = 0x2a2b25;
-            for (let v = 0; v < 3; v++) {
-                const mat = mats[v], skin = skins[v], skinD = skinsD[v], shirt = shirts[v], pant = pants[v];
+            // 6 种款式：普通 / 连帽衫 / 无袖背心 / 衬衫领带 / 荧光工装背心 / 军绿+头盔
+            const STYLES = [
+                { skin: 0x7c8474, skinD: 0x4c5246, top: 0x4d524a, pant: 0x2b312e, extra: 'none' },
+                { skin: 0x6e7568, skinD: 0x444a40, top: 0x5e483d, pant: 0x33302b, extra: 'hoodie' },
+                { skin: 0x86826e, skinD: 0x55523f, top: 0x3d4b53, pant: 0x262b33, extra: 'tank' },
+                { skin: 0x7a7e6c, skinD: 0x4a4e40, top: 0xb4b2a6, pant: 0x23262b, extra: 'tie' },
+                { skin: 0x72786a, skinD: 0x484e41, top: 0x3a3d3a, pant: 0x2d2f2a, extra: 'vest' },
+                { skin: 0x80806e, skinD: 0x504f40, top: 0x2f3a2c, pant: 0x2a2a22, extra: 'army' }
+            ];
+            const wound = 0x3a2a26, blood = 0x4a0f0f, boot = 0x211f1b, boneC = 0xc9c3a9, claw = 0x2a2b25;
+            for (let v = 0; v < STYLES.length; v++) {
+                const S = STYLES[v], mat = mats[v % 3], skin = S.skin, skinD = S.skinD, shirt = S.top, pant = S.pant;
+                const sleeve = S.extra === 'tank' ? skin : shirt;
                 // 躯干
                 const T = [];
-                T.push(part('cyl', [0.62, 0.56, 0.72, 10], shirt, [0, 1.03, 0], null, [1, 1, 0.78]));
+                T.push(part('cyl', [0.62, 0.56, 0.72, 10], S.extra === 'tank' ? skinD : shirt, [0, 1.03, 0], null, [1, 1, 0.78]));
                 T.push(part('sph', [0.38, 8], skin, [0, 1.38, 0.02], null, [1.25, 0.6, 0.8]));
                 T.push(part('cyl', [0.26, 0.32, 0.22, 8], skinD, [0, 1.48, 0]));
                 T.push(part('box', [0.5, 0.2, 0.28], pant, [0, 0.72, 0]));
+                if (S.extra === 'tank') { T.push(part('cyl', [0.64, 0.58, 0.5, 10], 0x6a6f66, [0, 1.12, 0], null, [1.02, 1, 0.8])); }   // 背心
+                if (S.extra === 'hoodie') { T.push(part('sph', [0.5, 8], shirt, [0, 1.52, -0.14], null, [1.15, 0.7, 0.8])); T.push(part('box', [0.34, 0.16, 0.05], 0x40322a, [0, 0.9, 0.245])); }
+                if (S.extra === 'tie') { T.push(part('box', [0.075, 0.5, 0.02], 0x7a1f1f, [0, 1.02, 0.245])); T.push(part('box', [0.11, 0.09, 0.03], 0x7a1f1f, [0, 1.3, 0.245])); }
+                if (S.extra === 'vest') { for (const sx of [-0.17, 0.17]) T.push(part('box', [0.1, 0.62, 0.02], 0xc2661c, [sx, 1.08, 0.247])); T.push(part('box', [0.56, 0.06, 0.02], 0xd8d24a, [0, 0.92, 0.247])); T.push(part('box', [0.56, 0.06, 0.02], 0xd8d24a, [0, 1.2, 0.247])); }
+                if (S.extra === 'army') { T.push(part('box', [0.2, 0.18, 0.05], 0x3c4a35, [-0.14, 0.95, 0.25])); T.push(part('box', [0.2, 0.18, 0.05], 0x3c4a35, [0.14, 0.95, 0.25])); }
                 for (let i = 0; i < 5; i++) T.push(part('box', [0.1 + Math.random() * 0.12, 0.08 + Math.random() * 0.12, 0.025], i % 2 ? skinD : wound, [(Math.random() - 0.5) * 0.46, 0.82 + Math.random() * 0.48, 0.235], [0, 0, (Math.random() - 0.5) * 0.8]));
+                if (S.extra === 'tie' || S.extra === 'tank') for (let i = 0; i < 3; i++) T.push(part('box', [0.12 + Math.random() * 0.12, 0.1 + Math.random() * 0.14, 0.026], blood, [(Math.random() - 0.5) * 0.44, 0.85 + Math.random() * 0.45, 0.24], [0, 0, (Math.random() - 0.5) * 0.9]));   // 衣物血污
                 // 头
                 const H = [];
                 H.push(part('sph', [0.52, 10], skin, [0, 0, 0], null, [1.05, 1.13, 0.92]));
@@ -2606,11 +2857,15 @@
                 H.push(part('box', [0.22, 0.1, 0.035], wound, [0, -0.115, 0.278]));
                 for (let i = 0; i < 6; i++) { H.push(part('cyl', [0.03, 0.0, 0.05, 4], boneC, [-0.085 + i * 0.034, -0.095, 0.302])); if (i % 2 === 0) H.push(part('cyl', [0.0, 0.025, 0.035, 4], boneC, [-0.085 + i * 0.034, -0.145, 0.3])); }
                 H.push(part('box', [0.07, 0.11, 0.025], wound, [0.20, -0.13, 0.22], [0, 0, -0.45]));
-                // 手臂（挂在肩枢轴上，向下垂）
+                if (S.extra === 'hoodie') H.push(part('sph', [0.6, 8], shirt, [0, 0.07, -0.08], null, [1.0, 0.85, 0.95]));         // 兜帽套在脑后
+                if (S.extra === 'army') H.push(part('sph', [0.6, 8], 0x3c4a35, [0, 0.12, -0.01], null, [1.0, 0.68, 1.02]));         // 钢盔
+                if (S.extra === 'tie') H.push(part('box', [0.14, 0.2, 0.02], blood, [-0.17, -0.02, 0.255], [0, 0, 0.3]));          // 脸上血迹
+                // 手臂 / 腿
                 const mkArm = () => {
                     const A = [];
-                    A.push(part('cyl', [0.21, 0.17, 0.56, 8], shirt, [0, -0.23, 0]));
+                    A.push(part('cyl', [0.21, 0.17, 0.56, 8], sleeve, [0, -0.23, 0]));
                     A.push(part('sph', [0.21, 6], skin, [0, -0.52, 0.02]));
+                    if (S.extra === 'tank' || S.extra === 'vest') A.push(part('box', [0.12, 0.16, 0.04], blood, [0.0, -0.3, 0.1], [0, 0, 0.4]));
                     for (let i = 0; i < 4; i++) { const fx = (i - 1.5) * 0.045; A.push(part('cyl', [0.03, 0.025, 0.13, 5], skin, [fx, -0.61, 0.055], [-0.35, 0, 0])); A.push(part('cyl', [0.036, 0.0, 0.055, 5], claw, [fx, -0.68, 0.075])); }
                     return A;
                 };
@@ -2618,6 +2873,7 @@
                     const L = [];
                     L.push(part('cyl', [0.26, 0.21, 0.58, 8], pant, [0, -0.24, 0]));
                     L.push(part('box', [0.13, 0.08, 0.035], skinD, [0, -0.20, 0.115]));
+                    if (S.extra === 'army') L.push(part('box', [0.2, 0.16, 0.04], 0x3c4a35, [0, -0.3, 0.17]));
                     L.push(part('box', [0.24, 0.15, 0.34], boot, [0, -0.52, 0.06]));
                     return L;
                 };
@@ -2626,6 +2882,12 @@
                     arm: hideMaster(mergeParts(mkArm(), 'zA' + v, mat)), leg: hideMaster(mergeParts(mkLeg(), 'zL' + v, mat))
                 });
             }
+            // 重伤状态：血糊 + 外露肋骨（生命低于 55% 时显示）
+            const G = [];
+            for (let i = 0; i < 7; i++) G.push(part('box', [0.12 + Math.random() * 0.16, 0.1 + Math.random() * 0.18, 0.03], i % 3 ? blood : 0x2a0808, [(Math.random() - 0.5) * 0.5, 0.78 + Math.random() * 0.62, 0.262], [0, 0, (Math.random() - 0.5) * 1.0]));
+            for (let i = 0; i < 4; i++) G.push(part('box', [0.3, 0.03, 0.03], boneC, [0.02, 0.98 + i * 0.075, 0.268], [0, 0, (i - 1.5) * 0.06]));
+            G.push(part('box', [0.07, 0.26, 0.03], blood, [0.12, 1.58, 0.17]));      // 颈部淌血
+            ZA.gore = hideMaster(mergeParts(G, 'zGore', matVC('goreMat', 0.35)));
             const eyeMat = stdMat('zEyeMat', { unlit: true, diffuse: [0.78, 0.74, 0.35], emissive: [0.62, 0.58, 0.22], spec: 0 });
             const eyeRedMat = stdMat('zEyeRed', { unlit: true, diffuse: [1, 0.1, 0.08], emissive: [1.3, 0.12, 0.08], spec: 0 });
             const mkEyes = (m, n) => hideMaster(mergeParts([part('sph', [0.05, 5], [1, 1, 1], [-0.115, 0.052, 0.272]), part('sph', [0.05, 5], [1, 1, 1], [0.115, 0.052, 0.272])], n, m));
@@ -2715,12 +2977,12 @@
                 for (let i = 0; i < this.insts.length; i++) addCaster(this.insts[i]);
             }
             buildNormal() {
-                const t = this.zombieType, v = ZA.v[Math.floor(Math.random() * 3)];
+                const t = this.zombieType, v = ZA.v[(Math.random() * ZA.v.length) | 0];
                 const R = this.root;
                 const mk = (master, parent, x, y, z) => { const m = instOf(master, parent, x, y, z); this.insts.push(m); return m; };
                 this.torso = mk(v.torso, R);
                 this.headP = new B.TransformNode('hp', scene); this.headP.parent = R; this.headP.position.set(0, 1.76, 0);
-                mk(v.head, this.headP); mk(t === 'runner' ? ZA.eyesRed : ZA.eyes, this.headP);
+                this.headInsts = [mk(v.head, this.headP), mk(t === 'runner' ? ZA.eyesRed : ZA.eyes, this.headP)];
                 this.armL = new B.TransformNode('al', scene); this.armL.parent = R; this.armL.position.set(-0.40, 1.30, 0); this.armL.rotation.z = 0.10;
                 this.armR = new B.TransformNode('ar', scene); this.armR.parent = R; this.armR.position.set(0.40, 1.30, 0); this.armR.rotation.z = -0.10;
                 mk(v.arm, this.armL); mk(v.arm, this.armR);
@@ -2730,6 +2992,11 @@
                 if (t === 'runner') { R.scaling.set(0.82, 1.04, 0.82); this.scale = 0.95; }
                 else if (t === 'armored') { R.scaling.set(1.32, 1.24, 1.22); this.scale = 1.25; mk(ZA.plates, R); }
                 else if (t === 'bloater') { mk(ZA.belly, R); mk(ZA.pustule, R); this.scale = 1.0; }
+                // 个体差异：身高 / 体型随机，避免一排"复制人"
+                const jh = 0.93 + Math.random() * 0.14, jw = 0.94 + Math.random() * 0.12;
+                R.scaling.x *= jw; R.scaling.z *= jw; R.scaling.y *= jh;
+                this.scale *= jh;
+                this.gore = mk(ZA.gore, R); this.gore.setEnabled(false); this.goreOn = false;
                 this.boundY = 1.0 * this.scale; this.boundR = 1.35 * this.scale;
                 this.headY = 1.78;
                 if (t === 'bloater') this.spheres = STD_SPHERES.concat([[0, 0.98, 0.30, 0.30, ZONE_WEAK]]);
@@ -2746,6 +3013,7 @@
                 const dist = Math.hypot(this.pos.x - yawObject.position.x, this.pos.z - yawObject.position.z);
                 if (this.state === 'PATROL' || this.state === 'INVESTIGATE') sound.playZombieSound(this.zombieType, 'alert', dist);
                 else if (Math.random() < 0.35) sound.playZombieSound(this.zombieType, 'pain', dist);
+                if (this.gore && !this.goreOn && this.hp < this.maxHp * 0.55) { this.goreOn = true; this.gore.setEnabled(true); }
                 this.state = 'CHASE'; this.lostT = 0;
                 // 受击硬直：非 Boss / 非重甲，爆头或大伤害时短暂踉跄并被打退一点
                 if (!this.isBoss && this.zombieType !== 'armored' && (isHead || amount > 40)) {
@@ -2757,7 +3025,7 @@
                 }
                 if (this.headP) this.headP.rotation.x = -0.35;
                 if (this === gameState.activeBoss) updateBossHUD();
-                if (this.hp <= 0) { this.die(); return true; }
+                if (this.hp <= 0) { this.headshotKill = isHead; this.die(); return true; }
                 return false;
             }
             die() {
@@ -2769,6 +3037,12 @@
                 sound.playZombieSound(this.zombieType, 'pain', dist);
                 addKillFeedItem(`${this.stats.label} (+${reward} PTS)`);
                 fxBlood(this.pos.x, this.pos.y + 1.0 * this.scale, this.pos.z, 12, false);
+                if (this.headshotKill && this.headInsts) {          // 爆头击杀：头部炸掉，喷一团血雾
+                    this.headInsts.forEach(m => m.setEnabled(false));
+                    fxBlood(this.pos.x, this.pos.y + 1.8 * this.scale, this.pos.z, 22, false);
+                    FXS.sparks.emit(this.pos.x, this.pos.y + 1.8 * this.scale, this.pos.z, 3);
+                }
+                if (this.gore) { this.goreOn = true; this.gore.setEnabled(true); }
                 addBloodSplat(this.pos.x, this.pos.z, this.isBoss ? 2.2 : 1.1);
                 if (this === gameState.activeBoss) {
                     gameState.activeBoss = null; updateBossHUD();
@@ -4044,6 +4318,7 @@
             gameState.activeBoss = null; gameState.grenades = 3; gameState.isReloading = false;
             gameState.wave = 0; gameState.nextWaveAt = 45; gameState.nextAirdropAt = 150;
             gameState.spreadBloom = 0; gameState.lastDamageAt = -99; gameState.killSource = null;
+            DN.last = -1; DN.boss = 0;
             gameState.screenShake = 0; gameState.mouseDown = false; gameState.meleeCooldown = 0; gameState.lastFireTime = 0;
             setADS(false);
             yawObject.position.x = 0; yawObject.position.y = EYE_HEIGHT; yawObject.position.z = 0;
@@ -4198,6 +4473,7 @@
             }
             updateViewModel(dt, now);
             updateWorld(now);
+            updateDayNight(dt);
             updateFX(dt);
             updateHpBars(now);
             adaptQuality(dt);
