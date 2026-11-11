@@ -1444,7 +1444,7 @@
         let HEMI_BASE = 0.95;   // 昼夜系统会每帧改写
         hemi.intensity = HEMI_BASE;
 
-        const sunDir = new B.Vector3(-0.68, -0.42, -0.60).normalize();   // 仰角约 25°，方位与天空里的太阳 / 夜里的月亮一致
+        const sunDir = new B.Vector3(-0.58, -0.60, -0.52).normalize();   // 仰角约 38°，方位与天空里的太阳 / 夜里的月亮一致
         const sun = new B.DirectionalLight('sun', sunDir, scene);
         sun.position = new B.Vector3(48, 60, 42);
         sun.diffuse = new B.Color3(1.0, 0.77, 0.54);
@@ -1465,7 +1465,7 @@
             if (B.ShadowGenerator.QUALITY_MEDIUM !== undefined) shadowGen.filteringQuality = IS_TOUCH ? B.ShadowGenerator.QUALITY_LOW : B.ShadowGenerator.QUALITY_MEDIUM;
             shadowGen.bias = 0.0008;
             shadowGen.normalBias = 0.025;
-            shadowGen.setDarkness(0.25);
+            shadowGen.setDarkness(0.5);
         } catch (e) { console.warn('shadow init failed', e); shadowGen = null; }
         function addCaster(mesh) { if (shadowGen && mesh) shadowGen.addShadowCaster(mesh, false); }
         function removeCaster(mesh) { if (shadowGen && mesh) { try { shadowGen.removeShadowCaster(mesh, false); } catch (e) {} } }
@@ -1478,21 +1478,48 @@
             if (!IS_TOUCH && engine.webGLVersion > 1) pipeline.samples = 4;
             pipeline.bloomEnabled = true;
             pipeline.bloomThreshold = 0.82; pipeline.bloomWeight = IS_TOUCH ? 0.22 : 0.32;
-            pipeline.bloomKernel = IS_TOUCH ? 32 : 56; pipeline.bloomScale = 0.5;
+            pipeline.bloomKernel = IS_TOUCH ? 32 : 64; pipeline.bloomScale = 0.5;
             pipeline.imageProcessingEnabled = true;
             const ip = pipeline.imageProcessing;
             ip.toneMappingEnabled = true;
             if (B.ImageProcessingConfiguration.TONEMAPPING_ACES !== undefined) ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
-            ip.exposure = 1.15; ip.contrast = 1.14;
-            ip.vignetteEnabled = true; ip.vignetteWeight = 1.8; ip.vignetteStretch = 0.4;
+            ip.exposure = 1.3; ip.contrast = 1.05;
+            ip.vignetteEnabled = true; ip.vignetteWeight = 1.3; ip.vignetteStretch = 0.4;
             ip.vignetteColor = new B.Color4(0, 0, 0, 0);
-            pipeline.grainEnabled = !IS_TOUCH; if (pipeline.grain) { pipeline.grain.intensity = 4; pipeline.grain.animated = true; }
+            try {                                // 色彩分级：阴影偏青、高光偏暖、略提饱和
+                const cc = new B.ColorCurves();
+                cc.globalSaturation = 12;
+                cc.shadowsHue = 205; cc.shadowsDensity = 14; cc.shadowsSaturation = 10;
+                cc.highlightsHue = 42; cc.highlightsDensity = 10;
+                ip.colorCurvesEnabled = true; ip.colorCurves = cc;
+            } catch (e) {}
+            pipeline.grainEnabled = !IS_TOUCH; if (pipeline.grain) { pipeline.grain.intensity = 3; pipeline.grain.animated = true; }
             pipeline.chromaticAberrationEnabled = !IS_TOUCH; if (pipeline.chromaticAberration) pipeline.chromaticAberration.aberrationAmount = 6;
-            pipeline.sharpenEnabled = false;
+            if (pipeline.sharpen) { pipeline.sharpen.colorAmount = 1.0; pipeline.sharpen.edgeAmount = IS_TOUCH ? 0.32 : 0.18; }
+            pipeline.sharpenEnabled = IS_TOUCH;
         } catch (e) { console.warn('pipeline init failed', e); pipeline = null; }
 
+        // ---------- SSAO2 环境光遮蔽（仅桌面 + WebGL2 + 特效全开档）----------
+        let ssao = null, ssaoOn = false, ssaoDead = false;
+        function setSSAO(want) {
+            if (IS_TOUCH || ssaoDead) return;
+            try {
+                if (want && !ssao) {
+                    if (engine.webGLVersion < 2) { ssaoDead = true; return; }
+                    ssao = new B.SSAO2RenderingPipeline('ssao', scene, 0.75, []);
+                    ssao.radius = 1.1; ssao.totalStrength = 0.85; ssao.samples = 8;
+                    ssao.expensiveBlur = false; ssao.maxZ = 60;
+                }
+                if (!ssao || want === ssaoOn) return;
+                const m = scene.postProcessRenderPipelineManager;
+                if (want) m.attachCamerasToRenderPipeline('ssao', camera);
+                else m.detachCamerasFromRenderPipeline('ssao', camera);
+                ssaoOn = want;
+            } catch (e) { console.warn('ssao failed', e); ssaoDead = true; ssao = null; }
+        }
+
         // ---------- 自适应画质 ----------
-        const GFX = { mode: URL_Q || 'auto', scaleLevel: 1, tier: 0, basePR: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.35 : 1.8) };
+        const GFX = { mode: URL_Q || 'auto', scaleLevel: 1, tier: 0, basePR: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 1.8) };
         // 凹凸贴图登记表：只在桌面端、特效档 < 2 时启用（手机不启用，省片元开销）
         const BUMPS = [];
         function setBumpsEnabled(on) { for (let i = 0; i < BUMPS.length; i++) BUMPS[i].mat.bumpTexture = on ? BUMPS[i].tex : null; }
@@ -1506,7 +1533,8 @@
             on(() => { if (pipeline) { pipeline.grainEnabled = tier < 1 && !IS_TOUCH; pipeline.chromaticAberrationEnabled = tier < 1 && !IS_TOUCH; pipeline.bloomEnabled = tier < 2; } });
             on(() => { sun.shadowEnabled = tier < 2; });
             on(() => { setBumpsEnabled(!IS_TOUCH && tier < 2); });
-            on(() => { if (pipeline && !IS_TOUCH) pipeline.samples = tier < 3 && engine.webGLVersion > 1 ? 4 : 1; if (pipeline) pipeline.fxaaEnabled = tier >= 3 || IS_TOUCH; });
+            on(() => { if (pipeline && !IS_TOUCH) pipeline.samples = tier < 3 && engine.webGLVersion > 1 ? 4 : 1; if (pipeline) { const fx = tier >= 3 || IS_TOUCH; pipeline.fxaaEnabled = fx; pipeline.sharpenEnabled = fx && tier < 3; } });
+            on(() => { setSSAO(!IS_TOUCH && tier < 1); });
         }
         function setQualityMode(mode) {
             GFX.mode = mode;
@@ -1780,7 +1808,7 @@
                 g.addColorStop(0.00, '#27384b'); g.addColorStop(0.25, '#5c7384'); g.addColorStop(0.40, '#a49c92');
                 g.addColorStop(0.47, '#e2a96c'); g.addColorStop(0.50, '#f0bc80'); g.addColorStop(0.55, '#8e8579'); g.addColorStop(1.0, '#566066');
                 c.fillStyle = g; c.fillRect(0, 0, w, h);
-                const sx = w * 0.635, sy = h * 0.36;
+                const sx = w * 0.634, sy = h * 0.29;
                 const sg = c.createRadialGradient(sx, sy, 0, sx, sy, 170);
                 sg.addColorStop(0, 'rgba(255,236,190,0.95)'); sg.addColorStop(0.15, 'rgba(255,200,130,0.55)'); sg.addColorStop(1, 'rgba(255,170,100,0)');
                 c.fillStyle = sg; c.fillRect(0, 0, w, h);
@@ -1804,7 +1832,7 @@
                     c.fillStyle = `rgba(${215 + Math.random() * 40 | 0},${225 + Math.random() * 30 | 0},255,${a})`;
                     c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
                 }
-                const mx = w * 0.635, my = h * 0.36;
+                const mx = w * 0.634, my = h * 0.29;
                 const mg = c.createRadialGradient(mx, my, 0, mx, my, 90);
                 mg.addColorStop(0, 'rgba(200,215,255,0.55)'); mg.addColorStop(0.25, 'rgba(120,145,210,0.22)'); mg.addColorStop(1, 'rgba(60,80,140,0)');
                 c.fillStyle = mg; c.fillRect(mx - 100, my - 100, 200, 200);
@@ -1930,19 +1958,6 @@
             const roadV = B.MeshBuilder.CreateGround('roadV', { width: 18, height: 180 }, scene); roadV.position.y = 0.021;
             roadH.material = roadMat; roadV.material = roadMatV;
             [roadH, roadV].forEach(r => { r.receiveShadows = true; staticMesh(r); });
-            // 水洼：深色半透明椭圆 + 强反射（映出天空），随机散在路面
-            const puddles = [];
-            const pdPos = [[-3, 6], [4, 14], [-5, -9], [3, -18], [6, 28], [-4, 40], [5, -32], [-3, -46], [14, 3], [-20, -3], [30, 4], [-38, 3], [24, -4], [-12, 4], [40, -3], [3, 58]];
-            pdPos.forEach(([x, z], i) => {
-                const d = B.MeshBuilder.CreateDisc('pd', { radius: 1, tessellation: 22 }, scene);
-                d.rotation.x = Math.PI / 2; d.position.set(x, 0.045, z);
-                d.scaling.set(1.1 + (i % 4) * 0.55, 1.6 + ((i * 7) % 5) * 0.4, 1);   // 旋转后 x/y 对应地面 x/z
-                paint(d, [1, 1, 1]); puddles.push(d);
-            });
-            const puddleMat = stdMat('puddleMat', { diffuse: [0.05, 0.06, 0.08], spec: 1.0, power: 140, alpha: 0.8, twoSided: true, zOffset: -6, noDepthWrite: true });
-            makeReflective(puddleMat, 0.95);
-            const puddleMesh = mergeParts(puddles, 'puddles', puddleMat); staticMesh(puddleMesh);
-
             // 标线：双黄中心线、白色虚线、斑马线（顶点色小平面合并）
             const marks = [];
             const flat = (x, z, w, d, c, y = 0.034) => {
@@ -2160,9 +2175,9 @@
         //   refl   环境反射强度倍率
         // ======================================================================
         const DN_KEYS = [
-            { t: 0,   sunI: 1.35, sunC: [1.00, 0.77, 0.54], hemi: 0.95, hemiD: [0.78, 0.84, 0.88], hemiG: [0.30, 0.28, 0.26], fog: [0.467, 0.518, 0.545], dens: 0.0085, exp: 1.15, tint: [1.00, 1.00, 1.00], night: 0.00, lamp: 0.0, win: 1.0, refl: 1.0 },
-            { t: 420, sunI: 0.85, sunC: [1.00, 0.50, 0.28], hemi: 0.70, hemiD: [0.68, 0.58, 0.72], hemiG: [0.26, 0.21, 0.25], fog: [0.34, 0.28, 0.34],   dens: 0.0098, exp: 1.12, tint: [1.00, 0.70, 0.76], night: 0.20, lamp: 0.7, win: 1.4, refl: 0.8 },
-            { t: 900, sunI: 0.38, sunC: [0.52, 0.64, 1.00], hemi: 0.55, hemiD: [0.36, 0.45, 0.70], hemiG: [0.12, 0.14, 0.20], fog: [0.075, 0.095, 0.17], dens: 0.0125, exp: 1.22, tint: [0.45, 0.50, 0.80], night: 1.00, lamp: 1.0, win: 1.9, refl: 0.3 }
+            { t: 0,   sunI: 1.5,  sunC: [1.00, 0.80, 0.58], hemi: 1.25, hemiD: [0.86, 0.90, 0.94], hemiG: [0.42, 0.40, 0.38], fog: [0.467, 0.518, 0.545], dens: 0.0085, exp: 1.30, tint: [1.00, 1.00, 1.00], night: 0.00, lamp: 0.0, win: 1.0, refl: 1.0 },
+            { t: 480, sunI: 1.0,  sunC: [1.00, 0.55, 0.32], hemi: 0.98, hemiD: [0.78, 0.68, 0.80], hemiG: [0.34, 0.28, 0.32], fog: [0.36, 0.30, 0.36],   dens: 0.0095, exp: 1.28, tint: [1.00, 0.72, 0.78], night: 0.20, lamp: 0.7, win: 1.4, refl: 0.8 },
+            { t: 900, sunI: 0.55, sunC: [0.56, 0.68, 1.00], hemi: 0.85, hemiD: [0.46, 0.56, 0.84], hemiG: [0.18, 0.20, 0.28], fog: [0.10, 0.13, 0.22],  dens: 0.0115, exp: 1.40, tint: [0.45, 0.50, 0.80], night: 1.00, lamp: 1.0, win: 1.9, refl: 0.3 }
         ];
         const DN = { boss: 0, last: -1 };
         const _dnv = {};
@@ -2466,6 +2481,13 @@
             const g = (shape, dims, color, p, r, s) => { const m = part(shape, dims, color, p, r, s); P.push(m); return m; };
             const glove = 0x1d1f21, sleeve = 0x3b4636, skin = 0xa87f60;
             let muzzleZ = 0.8;
+            // 支撑手前臂：从握持的手（a）斜向左下延伸到画面外的肘部（b），带袖口，不再是一根悬空的方杆
+            const forearm = (ax, ay, az, bx, by, bz, r) => {
+                const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                const rot = [Math.PI / 2 - Math.asin(dy / len), Math.atan2(dx, dz), 0];
+                g('cyl', [r * 1.7, r * 2.1, len, 8], sleeve, [(ax + bx) / 2, (ay + by) / 2, (az + bz) / 2], rot);
+                g('cyl', [r * 2.2, r * 2.2, 0.035, 8], 0x1b1d1f, [ax + dx / len * 0.06, ay + dy / len * 0.06, az + dz / len * 0.06], rot);
+            };
             if (id === 0) {          // 战术手枪
                 g('box', [0.05, 0.06, 0.2], 0x171a1d, [0, 0.02, 0.12]);
                 g('box', [0.046, 0.045, 0.17], 0x23272b, [0, -0.025, 0.1]);
@@ -2476,7 +2498,7 @@
                 g('sph', [0.1, 8], glove, [0, -0.08, 0.02], null, [1, 1.1, 1.1]);
                 g('sph', [0.09, 8], glove, [-0.03, -0.1, 0.1]);
                 g('box', [0.085, 0.085, 0.38], sleeve, [0.045, -0.15, -0.2], [-0.25, 0.1, 0]);
-                g('box', [0.08, 0.08, 0.34], sleeve, [-0.09, -0.19, -0.05], [-0.15, -0.2, 0]);
+                forearm(-0.03, -0.1, 0.1, -0.26, -0.36, -0.12, 0.045);
                 muzzleZ = 0.26;
             } else if (id === 1) {   // 突击步枪
                 g('box', [0.065, 0.085, 0.42], 0x292e33, [0, 0, 0.12]);
@@ -2488,12 +2510,12 @@
                 g('box', [0.04, 0.1, 0.05], 0x1a1c1e, [0, -0.095, -0.02], [0.3, 0, 0]);
                 g('box', [0.055, 0.09, 0.22], 0x24282c, [0, -0.012, -0.2]);
                 g('box', [0.06, 0.1, 0.02], 0x111315, [0, -0.012, -0.31]);
-                g('box', [0.012, 0.045, 0.012], 0x0d0f10, [0, 0.085, 0.7]);
+                g('box', [0.012, 0.075, 0.012], 0x0d0f10, [0, 0.063, 0.7]); g('box', [0.03, 0.022, 0.04], 0x0d0f10, [0, 0.036, 0.7]);
                 g('box', [0.03, 0.03, 0.012], 0x0d0f10, [0, 0.082, -0.02]);
                 g('sph', [0.1, 8], glove, [0, -0.085, -0.02], null, [1, 1.1, 1.1]);
                 g('sph', [0.1, 8], glove, [-0.01, -0.07, 0.42], null, [1.1, 0.9, 1.3]);
                 g('box', [0.085, 0.085, 0.42], sleeve, [0.06, -0.15, -0.3], [-0.3, 0.12, 0]);
-                g('box', [0.085, 0.085, 0.5], sleeve, [-0.1, -0.15, 0.18], [-0.1, -0.22, 0]);
+                forearm(-0.01, -0.07, 0.42, -0.32, -0.38, -0.08, 0.05);
                 muzzleZ = 0.82;
             } else if (id === 2) {   // 霰弹枪
                 g('box', [0.07, 0.09, 0.34], 0x3a3a3c, [0, 0, 0.1]);
@@ -2506,7 +2528,7 @@
                 g('sph', [0.1, 8], glove, [0, -0.085, -0.02], null, [1, 1.1, 1.1]);
                 g('sph', [0.11, 8], glove, [-0.01, -0.07, 0.42], null, [1.1, 0.9, 1.3]);
                 g('box', [0.085, 0.085, 0.42], sleeve, [0.06, -0.15, -0.3], [-0.3, 0.12, 0]);
-                g('box', [0.085, 0.085, 0.5], sleeve, [-0.1, -0.15, 0.18], [-0.1, -0.22, 0]);
+                forearm(-0.01, -0.07, 0.42, -0.32, -0.38, -0.08, 0.05);
                 muzzleZ = 0.84;
             } else {                 // 狙击枪
                 g('box', [0.06, 0.08, 0.46], 0x343e49, [0, 0, 0.1]);
@@ -2523,7 +2545,7 @@
                 g('sph', [0.1, 8], glove, [0, -0.085, -0.02], null, [1, 1.1, 1.1]);
                 g('sph', [0.1, 8], glove, [-0.01, -0.07, 0.38], null, [1.1, 0.9, 1.3]);
                 g('box', [0.085, 0.085, 0.42], sleeve, [0.06, -0.15, -0.3], [-0.3, 0.12, 0]);
-                g('box', [0.085, 0.085, 0.5], sleeve, [-0.1, -0.15, 0.16], [-0.1, -0.22, 0]);
+                forearm(-0.01, -0.07, 0.38, -0.32, -0.38, -0.1, 0.05);
                 muzzleZ = 1.1;
             }
             const gun = mergeParts(P, 'gunMesh' + id, mat);
@@ -2803,6 +2825,215 @@
 
 
         // ======================================================================
+        // 写实风格人形部件库：头（颅骨/眼窝/牙齿/发型）、躯干（胸腹/破衣）、手臂（上臂-肘-前臂-五指）、
+        // 腿（大腿-膝-小腿-鞋）。感染者与 Boss 共用，单位：米；头顶约 1.86。
+        // 约定：arm/leg 的几何以各自枢轴（肩/髋）为原点；head 以颈顶为原点；躯干以脚底为原点。
+        // ======================================================================
+        const HT = IS_TOUCH ? 8 : 12;                 // 圆柱/球细分
+        function ball(p, r, color, s) { return part('sph', [r * 2, IS_TOUCH ? 8 : 10], color, p, null, s || null); }
+        // 圆台：从 a（半径 r0）到 b（半径 r1）
+        function limb(a, b, r0, r1, color, tess) {
+            const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-4;
+            return part('cyl', [r1 * 2, r0 * 2, len, tess || HT], color, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], [Math.PI / 2 - Math.asin(clamp(dy / len, -1, 1)), Math.atan2(dx, dz), 0]);
+        }
+        const SKINS = [
+            { skin: 0x8c9484, skinD: 0x5a6155, decay: 0x6c6c52 },
+            { skin: 0x7f8778, skinD: 0x535a4e, decay: 0x5f6b55 },
+            { skin: 0x979a88, skinD: 0x62665a, decay: 0x76705a },
+            { skin: 0x86897a, skinD: 0x575b4f, decay: 0x69705a }
+        ];
+        const BONE = 0xd0c8a8, FLESH = 0x7a2e2e, BLOOD = 0x4a0f0f, DRIED = 0x2f0a0a, TEETH = 0xc8c19c, GUM = 0x5a2a2a;
+
+        // ---------- 手：手掌 + 五指（指节弯曲）+ 脏指甲；原点在手腕，指尖朝 -Y ----------
+        function handParts(o, color, nail, curl = 1, scaleK = 1) {
+            const P = [], [ox, oy, oz] = o, k = scaleK;
+            P.push(part('box', [0.07 * k, 0.085 * k, 0.03 * k], color, [ox, oy - 0.04 * k, oz]));
+            P.push(ball([ox, oy - 0.005, oz], 0.03 * k, color, [1.1, 0.8, 0.9]));
+            for (let i = 0; i < 4; i++) {
+                const fx = ox + (i - 1.5) * 0.0185 * k, len = (i === 1 || i === 2 ? 1.1 : 0.95) * k;
+                const a = [fx, oy - 0.082 * k, oz], b = [fx, oy - (0.082 + 0.045 * len) * k, oz + 0.012 * k * curl], c = [fx, oy - (0.082 + 0.045 * len + 0.032 * len) * k, oz + 0.04 * k * curl];
+                P.push(limb(a, b, 0.0095 * k, 0.0085 * k, color, 5)); P.push(limb(b, c, 0.0085 * k, 0.0065 * k, color, 5));
+                P.push(ball(c, 0.0075 * k, nail));
+            }
+            P.push(limb([ox - 0.036 * k, oy - 0.02 * k, oz + 0.004], [ox - 0.05 * k, oy - 0.062 * k, oz + 0.026 * k], 0.011 * k, 0.008 * k, color, 5));   // 拇指
+            P.push(ball([ox - 0.05 * k, oy - 0.064 * k, oz + 0.028 * k], 0.0075 * k, nail));
+            return P;
+        }
+
+        // ---------- 头：原点 = 颈顶；颅骨中心约 (0, 0.15, 0.01) ----------
+        function headParts(S, opt = {}) {
+            const sk = S.skin, sd = S.skinD, H = [];
+            H.push(part('sph', [0.215, IS_TOUCH ? 10 : 14], sk, [0, 0.16, 0.0], null, [0.95, 1.1, 1.06]));                 // 颅
+            H.push(part('sph', [0.17, 10], sk, [0, 0.085, 0.032], null, [1.0, 1.1, 0.95]));                                 // 面中部
+            H.push(part('box', [0.15, 0.02, 0.05], sd, [0, 0.196, 0.075], [-0.1, 0, 0]));                                    // 眉骨
+            for (const sx of [-1, 1]) {
+                H.push(ball([sx * 0.037, 0.158, 0.082], 0.032, 0x1d1613, [1, 0.88, 0.55]));                                  // 眼窝
+                H.push(ball([sx * 0.074, 0.09, 0.07], 0.034, 0x565d50, [0.8, 1.2, 0.5]));                                    // 凹陷的脸颊
+                H.push(ball([sx * 0.103, 0.13, 0.0], 0.026, sk, [0.45, 1.0, 0.75]));                                          // 耳
+                H.push(part('box', [0.034, 0.012, 0.012], sd, [sx * 0.037, 0.128, 0.098], [0, 0, sx * 0.25]));                // 眼袋
+            }
+            H.push(part('box', [0.026, 0.048, 0.03], sk, [0, 0.118, 0.1], [0.28, 0, 0]));                                    // 鼻
+            H.push(part('box', [0.03, 0.014, 0.02], 0x1a1010, [0, 0.092, 0.108]));                                          // 鼻孔
+            // 嘴：上颌 + 张开的下颌 + 牙齿 + 舌
+            H.push(part('box', [0.085, 0.03, 0.05], sd, [0, 0.062, 0.088]));
+            H.push(part('box', [0.09, 0.02, 0.06], GUM, [0, 0.076, 0.092]));
+            for (let i = 0; i < 8; i++) H.push(part('box', [0.0105, 0.013 + (i % 3 === 0 ? 0.006 : 0), 0.009], TEETH, [-0.037 + i * 0.0105, 0.066, 0.113]));
+            const J = [];                                                                                                        // 下颌（绕铰链张开）
+            J.push(part('box', [0.088, 0.05, 0.1], sk, [0, 0.0, 0.05]));
+            J.push(part('box', [0.09, 0.016, 0.07], GUM, [0, 0.026, 0.07]));
+            for (let i = 0; i < 8; i++) J.push(part('box', [0.0105, 0.012 + (i % 2 ? 0.005 : 0), 0.009], TEETH, [-0.037 + i * 0.0105, 0.034, 0.1]));
+            J.push(part('box', [0.05, 0.012, 0.05], 0x6a2a2a, [0, 0.022, 0.07]));                                              // 舌
+            J.forEach(m => { m.position.y -= 0.015; m.position.z += 0.0; m.rotation.x += 0.42; m.position.z += 0.0; });
+            H.push(...J);
+            H.push(part('box', [0.06, 0.03, 0.012], BLOOD, [0, -0.012, 0.105]));                                                // 下巴血
+            H.push(part('box', [0.012, 0.05, 0.01], BLOOD, [-0.02, -0.04, 0.104]));
+            // 颞部伤口（外露颅骨）
+            if (opt.wound !== false) {
+                const sx = opt.woundSide || -1;
+                H.push(part('box', [0.07, 0.055, 0.012], FLESH, [sx * 0.065, 0.2, 0.062], [0.1, sx * 0.5, 0.15]));
+                H.push(part('box', [0.045, 0.035, 0.012], BONE, [sx * 0.066, 0.203, 0.068], [0.1, sx * 0.5, 0.15]));
+                H.push(part('box', [0.012, 0.09, 0.01], BLOOD, [sx * 0.08, 0.14, 0.085], [0, 0, 0.1]));
+            }
+            // 发型
+            const hc = opt.hair;
+            if (opt.hairStyle === 'short') { H.push(part('sph', [0.225, 10], hc, [0, 0.19, -0.015], null, [0.97, 0.62, 1.02])); H.push(part('box', [0.17, 0.03, 0.03], hc, [0, 0.245 - 0.04, 0.065], [0.2, 0, 0])); }
+            else if (opt.hairStyle === 'messy') { H.push(part('sph', [0.23, 10], hc, [0, 0.185, -0.02], null, [1.0, 0.75, 1.08])); for (let i = 0; i < 7; i++) H.push(part('box', [0.02, 0.07 + Math.random() * 0.05, 0.02], hc, [(Math.random() - 0.5) * 0.16, 0.12 + Math.random() * 0.1, -0.09 + Math.random() * 0.03], [Math.random() - 0.5, 0, Math.random() - 0.5])); }
+            else if (opt.hairStyle === 'bun') { H.push(part('sph', [0.225, 10], hc, [0, 0.185, -0.02], null, [0.97, 0.66, 1.04])); H.push(ball([0, 0.255, -0.085], 0.05, hc)); }
+            else if (opt.hairStyle === 'patchy') { for (let i = 0; i < 5; i++) H.push(ball([(Math.random() - 0.5) * 0.14, 0.2 + Math.random() * 0.04, -0.03 - Math.random() * 0.05], 0.03 + Math.random() * 0.02, hc, [1, 0.5, 1])); }
+            return H;
+        }
+
+        // ---------- 手臂：原点 = 肩 ----------
+        function armParts(S, st, bare) {
+            const A = [], sk = S.skin, sd = S.skinD, sleeve = st.sleeveColor, sleeveLen = st.sleeve;   // sleeve: 'long' | 'short' | 'none'
+            const up = sleeveLen === 'none' ? sk : sleeve, fore = sleeveLen === 'long' ? sleeve : sk;
+            A.push(ball([0, 0, 0], 0.062, st.top));                                          // 肩
+            A.push(limb([0, 0, 0], [0, -0.27, 0.0], 0.053, 0.043, up));
+            A.push(ball([0, -0.27, 0], 0.047, sleeveLen === 'long' ? sleeve : sk));        // 肘
+            A.push(limb([0, -0.27, 0], [0, -0.50, 0.09], 0.042, 0.03, fore));
+            if (sleeveLen === 'long') {                                                      // 撕破的袖口 + 露出的小臂
+                A.push(limb([0, -0.43, 0.065], [0, -0.50, 0.09], 0.042, 0.032, sk));
+                for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.4; A.push(part('box', [0.02, 0.05, 0.006], sleeve, [Math.cos(a) * 0.041, -0.425 - 0.01, 0.062 + Math.sin(a) * 0.041], [0.3, a, 0])); }
+            } else if (sleeveLen === 'short') {
+                for (let i = 0; i < 5; i++) { const a = i * 1.26; A.push(part('box', [0.02, 0.04 + (i % 2) * 0.02, 0.006], sleeve, [Math.cos(a) * 0.048, -0.165, Math.sin(a) * 0.048], [0, a, 0])); }
+            }
+            // 皮肤上的静脉 / 腐烂斑 / 血污
+            A.push(part('box', [0.008, 0.12, 0.004], sd, [0.03, -0.38, 0.065], [0.4, 0, 0.1]));
+            A.push(ball([-0.028, -0.4, 0.07], 0.02, S.decay, [1, 1.3, 0.5]));
+            A.push(part('box', [0.04, 0.05, 0.006], BLOOD, [0.02, -0.33, 0.05], [0.4, 0.3, 0.3]));
+            handParts([0, -0.50, 0.09], sk, 0x2a2a22, 1).forEach(m => A.push(m));
+            return A;
+        }
+        // ---------- 腿：原点 = 髋 ----------
+        function legParts(S, st) {
+            const Lg = [], sk = S.skin, pant = st.pant;
+            Lg.push(limb([0, 0, 0], [0, -0.45, 0.02], 0.082, 0.06, pant));
+            Lg.push(ball([0, -0.45, 0.02], 0.064, pant));
+            Lg.push(limb([0, -0.45, 0.02], [0, -0.86, 0.0], 0.058, 0.04, pant));
+            Lg.push(limb([0, -0.72, 0.01], [0, -0.86, 0.0], 0.05, 0.04, sk));                // 撕破裤脚下露出的小腿
+            for (let i = 0; i < 6; i++) { const a = i * 1.05; Lg.push(part('box', [0.026, 0.05 + (i % 3) * 0.02, 0.006], pant, [Math.cos(a) * 0.055, -0.7 - 0.01, 0.012 + Math.sin(a) * 0.055], [0, a, 0])); }
+            Lg.push(part('box', [0.03, 0.06, 0.008], S.decay, [0.04, -0.6, 0.05], [0.2, 0.4, 0.1]));
+            Lg.push(part('box', [0.1, 0.07, 0.26], st.shoe, [0, -0.9, 0.075]));            // 鞋
+            Lg.push(part('box', [0.104, 0.02, 0.27], 0x16140f, [0, -0.935, 0.075]));        // 鞋底
+            Lg.push(ball([0, -0.9, 0.17], 0.052, st.shoe, [1, 0.7, 1.0]));                  // 鞋头
+            Lg.push(ball([0, -0.865, -0.01], 0.042, sk));
+            return Lg;
+        }
+        // ---------- 躯干：原点 = 脚底；腰 ≈ 1.0，肩线 ≈ 1.47 ----------
+        function torsoParts(S, st) {
+            const T = [], sk = S.skin, sd = S.skinD, top = st.top, pant = st.pant;
+            T.push(part('box', [0.31, 0.17, 0.19], pant, [0, 0.98, 0]));                                                       // 髋/裤腰
+            T.push(ball([0, 0.96, -0.01], 0.09, pant, [1.7, 0.95, 1.1]));
+            T.push(part('box', [0.318, 0.028, 0.196], st.belt, [0, 1.055, 0]));                                                // 皮带
+            T.push(part('box', [0.04, 0.032, 0.012], 0x9a9a8e, [0, 1.055, 0.1]));
+            T.push(part('cyl', [0.25, 0.29, 0.22, HT], st.tank ? sk : top, [0, 1.16, 0], null, [1, 1, 0.72]));               // 腹
+            T.push(ball([0, 1.34, 0], 0.18, st.tank ? sk : top, [1.12, 0.95, 0.72]));                                          // 胸
+            T.push(ball([-0.2, 1.45, 0], 0.062, top)); T.push(ball([0.2, 1.45, 0], 0.062, top));
+            T.push(part('box', [0.4, 0.07, 0.14], top, [0, 1.46, -0.005]));
+            T.push(limb([0, 1.44, 0], [0, 1.6, 0.012], 0.058, 0.044, sd));                                                      // 颈
+            for (const sx of [-1, 1]) T.push(part('box', [0.008, 0.1, 0.008], sk, [sx * 0.022, 1.53, 0.04], [0.1, 0, 0]));       // 颈部肌腱
+            // 衣服款式细节
+            const E = st.extra;
+            if (E === 'office') { T.push(part('box', [0.065, 0.3, 0.014], 0x6a1d1d, [0, 1.26, 0.121])); T.push(part('box', [0.05, 0.05, 0.02], 0x6a1d1d, [0, 1.42, 0.12])); T.push(part('box', [0.1, 0.03, 0.03], 0xd8d6cc, [-0.045, 1.465, 0.1], [0, 0, 0.5])); T.push(part('box', [0.1, 0.03, 0.03], 0xd8d6cc, [0.045, 1.465, 0.1], [0, 0, -0.5])); }
+            if (E === 'hoodie') { T.push(ball([0, 1.5, -0.08], 0.1, top, [1.3, 0.65, 0.9])); T.push(part('box', [0.2, 0.09, 0.02], 0x3f322b, [0, 1.06, 0.1])); T.push(part('box', [0.008, 0.12, 0.008], 0xd8d6cc, [-0.03, 1.42, 0.125])); T.push(part('box', [0.008, 0.12, 0.008], 0xd8d6cc, [0.03, 1.42, 0.125])); }
+            if (E === 'nurse') { T.push(part('box', [0.1, 0.1, 0.014], sk, [0, 1.44, 0.095], [0, 0, 0.78])); T.push(part('box', [0.07, 0.07, 0.012], 0x3d7f85, [-0.08, 1.2, 0.108])); }
+            if (E === 'police') { T.push(part('box', [0.035, 0.045, 0.012], 0xd0b04a, [0.08, 1.38, 0.126])); T.push(part('box', [0.11, 0.025, 0.1], 0x1a1c20, [0.21, 1.505, 0.0])); T.push(part('box', [0.11, 0.025, 0.1], 0x1a1c20, [-0.21, 1.505, 0.0])); T.push(part('box', [0.05, 0.12, 0.05], 0x1a1c20, [0.17, 1.0, 0.1])); }
+            if (E === 'plaid') { for (let i = -2; i <= 2; i++) T.push(part('box', [0.012, 0.3, 0.008], 0x16130f, [i * 0.065, 1.28, 0.126])); for (let j = 0; j < 4; j++) T.push(part('box', [0.32, 0.012, 0.008], 0x16130f, [0, 1.1 + j * 0.1, 0.12])); }
+            if (E === 'tank') { T.push(part('box', [0.04, 0.17, 0.012], top, [-0.075, 1.42, 0.1])); T.push(part('box', [0.04, 0.17, 0.012], top, [0.075, 1.42, 0.1])); T.push(part('cyl', [0.255, 0.285, 0.27, HT], top, [0, 1.17, 0], null, [1.02, 1, 0.75])); T.push(ball([0, 1.34, 0], 0.184, top, [1.03, 0.9, 0.74])); }
+            // 下摆撕裂条
+            for (let i = 0; i < 8; i++) { const x = (i - 3.5) * 0.04, hh = 0.05 + Math.random() * 0.1; T.push(part('box', [0.032, hh, 0.01], top, [x, 1.045 - hh / 2, 0.112 - Math.abs(x) * 0.25], [0.05, x * 2, (Math.random() - 0.5) * 0.3])); }
+            T.push(part('box', [0.12, 0.08, 0.01], sk, [0.06, 1.15, 0.106], [0, 0, 0.1]));                                       // 撕破露出的肚皮
+            // 咬伤：右肩/颈侧撕开的皮肉 + 骨头 + 血流
+            T.push(ball([0.12, 1.5, 0.05], 0.05, FLESH, [1.1, 0.6, 0.8]));
+            T.push(part('box', [0.03, 0.03, 0.02], BONE, [0.125, 1.505, 0.085], [0.3, 0.2, 0.4]));
+            T.push(part('box', [0.045, 0.22, 0.01], BLOOD, [0.1, 1.36, 0.128], [0, 0, 0.08]));
+            T.push(part('box', [0.03, 0.14, 0.01], DRIED, [0.15, 1.3, 0.1], [0, 0.6, 0.1]));
+            T.push(part('box', [0.1, 0.07, 0.01], BLOOD, [-0.04, 1.16, 0.108], [0, 0, -0.3]));                                    // 腹部血污
+            // 脏污斑
+            for (let i = 0; i < 5; i++) T.push(part('box', [0.04 + Math.random() * 0.06, 0.04 + Math.random() * 0.06, 0.008], i % 2 ? 0x2a2723 : sd, [(Math.random() - 0.5) * 0.3, 1.1 + Math.random() * 0.35, 0.115], [0, 0, Math.random()]));
+            return T;
+        }
+
+        const ZSTYLES = [
+            { name: '商务衬衫', extra: 'office', top: 0xb9b6a8, pant: 0x24272c, shoe: 0x1d1a17, belt: 0x15110e, sleeve: 'long', sleeveColor: 0xb9b6a8, hair: 0x3a2d24, hairStyle: 'short' },
+            { name: '连帽衫', extra: 'hoodie', top: 0x5b4a40, pant: 0x2f3a4a, shoe: 0x22201e, belt: 0x1a1512, sleeve: 'long', sleeveColor: 0x5b4a40, hair: 0x2a2018, hairStyle: 'messy' },
+            { name: '无袖背心', extra: 'tank', tank: true, top: 0x707367, pant: 0x3a3f33, shoe: 0x2a2520, belt: 0x1b1712, sleeve: 'none', sleeveColor: 0x707367, hair: 0x4a4038, hairStyle: 'patchy' },
+            { name: '护士服', extra: 'nurse', top: 0x4a8a90, pant: 0x4a8a90, shoe: 0xbab6aa, belt: 0x3d7f85, sleeve: 'short', sleeveColor: 0x4a8a90, hair: 0x2f2620, hairStyle: 'bun' },
+            { name: '警服', extra: 'police', top: 0x2a3140, pant: 0x20252f, shoe: 0x121212, belt: 0x0f0f10, sleeve: 'long', sleeveColor: 0x2a3140, hair: 0x2a241f, hairStyle: 'short' },
+            { name: '格子衬衫', extra: 'plaid', top: 0x7a3a30, pant: 0x3a4660, shoe: 0x3a2d22, belt: 0x2a1d14, sleeve: 'long', sleeveColor: 0x7a3a30, hair: 0x5a4a38, hairStyle: 'messy' }
+        ];
+
+        function buildHumanoidAssets() {
+            const mats = [0, 1, 2].map(i => stdMat('zomMat' + i, { tex: texGrunge(i), spec: 0.03 }));
+            for (let v = 0; v < ZSTYLES.length; v++) {
+                const st = ZSTYLES[v], S = SKINS[v % SKINS.length], mat = mats[v % 3];
+                const hd = headParts(S, { hair: st.hair, hairStyle: st.hairStyle, woundSide: v % 2 ? 1 : -1, wound: v !== 3 });
+                ZA.v.push({
+                    name: st.name,
+                    torso: hideMaster(mergeParts(torsoParts(S, st), 'zT' + v, mat)),
+                    head: hideMaster(mergeParts(hd, 'zH' + v, mat)),
+                    arm: hideMaster(mergeParts(armParts(S, st), 'zA' + v, mat)),
+                    leg: hideMaster(mergeParts(legParts(S, st), 'zL' + v, mat))
+                });
+            }
+            // 眼睛：浑浊发黄（疾速者为红色）
+            const eyeMat = stdMat('zEyeMat', { unlit: true, diffuse: [0.7, 0.7, 0.55], emissive: [0.5, 0.52, 0.36], spec: 0 });
+            const eyeRedMat = stdMat('zEyeRed', { unlit: true, diffuse: [1, 0.1, 0.08], emissive: [1.3, 0.12, 0.08], spec: 0 });
+            const mkEyes = (m, n) => hideMaster(mergeParts([ball([-0.037, 0.158, 0.088], 0.0175, [1, 1, 1]), ball([0.037, 0.158, 0.088], 0.0175, [1, 1, 1])], n, m));
+            ZA.eyes = mkEyes(eyeMat, 'zEyes'); ZA.eyesRed = mkEyes(eyeRedMat, 'zEyesR');
+            // 重甲：废铁护肩 + 胸甲 + 背板（用轮胎/铁皮拼的末日防具）
+            const PL = [], steel = 0x4a4c4a, rust = 0x6a3f2b, dark = 0x2c2e30;
+            for (const sd of [-1, 1]) {
+                PL.push(part('box', [0.17, 0.12, 0.2], steel, [sd * 0.25, 1.53, 0.0], [0, 0, sd * -0.3]));
+                PL.push(part('box', [0.18, 0.03, 0.21], rust, [sd * 0.255, 1.585, 0.0], [0, 0, sd * -0.3]));
+                for (let k = 0; k < 3; k++) PL.push(part('cyl', [0.0, 0.03, 0.07, 5], dark, [sd * (0.21 + k * 0.04), 1.62 - k * 0.02, 0.0], [0, 0, sd * -0.4]));   // 肩刺
+                PL.push(part('box', [0.1, 0.15, 0.05], steel, [sd * 0.1, 1.0, 0.115], [0, 0, 0.1]));                                         // 腰甲
+            }
+            PL.push(part('box', [0.34, 0.3, 0.045], steel, [0, 1.33, 0.128]));
+            PL.push(part('box', [0.28, 0.06, 0.05], rust, [0, 1.46, 0.14]));
+            PL.push(part('box', [0.04, 0.3, 0.05], dark, [0, 1.33, 0.15]));
+            for (let k = -1; k <= 1; k += 2) { PL.push(ball([k * 0.12, 1.26, 0.155], 0.014, 0x9a9a8e)); PL.push(ball([k * 0.12, 1.4, 0.155], 0.014, 0x9a9a8e)); }
+            PL.push(part('box', [0.32, 0.3, 0.04], steel, [0, 1.3, -0.128]));
+            PL.push(part('box', [0.28, 0.07, 0.1], dark, [0, 1.58, 0.01]));                                                                 // 护颈
+            ZA.plates = hideMaster(mergeParts(PL, 'zPlates', matVC('plateMat', 0.3)));
+            // 毒囊：鼓胀的腹部 + 青绿色脓包
+            const BL = [ball([0, 1.1, 0.09], 0.24, 0x6b7650, [1.0, 1.0, 0.95]), ball([0.1, 1.0, 0.25], 0.07, 0x3c4a2e), ball([-0.12, 1.18, 0.24], 0.06, 0x4a5a36)];
+            for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; BL.push(part('box', [0.02, 0.1, 0.01], 0x2e3a24, [Math.cos(a) * 0.16, 1.1 + Math.sin(a * 1.4) * 0.12, 0.28], [0, 0, a])); }
+            ZA.belly = hideMaster(mergeParts(BL, 'zBelly', matVC('bellyMat', 0.1)));
+            const PU = [];
+            for (let k = 0; k < 9; k++) { const a = (k / 9) * Math.PI * 2; PU.push(ball([Math.cos(a) * 0.15, 1.1 + Math.sin(a * 2) * 0.1, 0.3 + Math.cos(a * 3) * 0.02], 0.032 + (k % 3) * 0.012, [1, 1, 1], [1, 0.95, 0.6])); }
+            ZA.pustule = hideMaster(mergeParts(PU, 'zPust', stdMat('pustMat', { unlit: true, diffuse: [0.6, 0.66, 0.24], emissive: [0.6, 0.7, 0.2], spec: 0 })));
+            // 重伤状态：血糊 + 外露肋骨 + 脖子淌血（生命低于 55% 时显示）
+            const G = [];
+            for (let i = 0; i < 6; i++) G.push(part('box', [0.05 + Math.random() * 0.07, 0.04 + Math.random() * 0.08, 0.012], i % 3 ? BLOOD : DRIED, [(Math.random() - 0.5) * 0.28, 1.1 + Math.random() * 0.3, 0.135], [0, 0, (Math.random() - 0.5) * 1.0]));
+            G.push(part('box', [0.12, 0.1, 0.012], FLESH, [-0.03, 1.26, 0.138], [0, 0, 0.2]));
+            for (let i = 0; i < 4; i++) G.push(part('box', [0.12, 0.012, 0.014], BONE, [-0.03, 1.22 + i * 0.03, 0.146], [0, 0, 0.2 + i * 0.03]));
+            G.push(part('box', [0.03, 0.12, 0.01], BLOOD, [0.02, 1.5, 0.07]));
+            ZA.gore = hideMaster(mergeParts(G, 'zGore', matVC('goreMat', 0.35)));
+        }
+
+
+        // ======================================================================
         // 感染者：硬件实例化模型（同类共用几何，一个 draw call）+ 增强 AI
         //   · 命中判定用解析球体（头/胸/腹/腿/毒胚弱点），不依赖引擎拾取
         //   · AI：视线检测错峰、听声音调查、包抄角度、互相分离、卡墙换边滑行、攻击前摇可躲避
@@ -2820,91 +3051,7 @@
         function ensureZombieAssets() {
             if (ZA.ready) return;
             ZA.ready = true;
-            const mats = [0, 1, 2].map(i => stdMat('zomMat' + i, { tex: texGrunge(i), spec: 0.03 }));
-            // 6 种款式：普通 / 连帽衫 / 无袖背心 / 衬衫领带 / 荧光工装背心 / 军绿+头盔
-            const STYLES = [
-                { skin: 0x7c8474, skinD: 0x4c5246, top: 0x4d524a, pant: 0x2b312e, extra: 'none' },
-                { skin: 0x6e7568, skinD: 0x444a40, top: 0x5e483d, pant: 0x33302b, extra: 'hoodie' },
-                { skin: 0x86826e, skinD: 0x55523f, top: 0x3d4b53, pant: 0x262b33, extra: 'tank' },
-                { skin: 0x7a7e6c, skinD: 0x4a4e40, top: 0xb4b2a6, pant: 0x23262b, extra: 'tie' },
-                { skin: 0x72786a, skinD: 0x484e41, top: 0x3a3d3a, pant: 0x2d2f2a, extra: 'vest' },
-                { skin: 0x80806e, skinD: 0x504f40, top: 0x2f3a2c, pant: 0x2a2a22, extra: 'army' }
-            ];
-            const wound = 0x3a2a26, blood = 0x4a0f0f, boot = 0x211f1b, boneC = 0xc9c3a9, claw = 0x2a2b25;
-            for (let v = 0; v < STYLES.length; v++) {
-                const S = STYLES[v], mat = mats[v % 3], skin = S.skin, skinD = S.skinD, shirt = S.top, pant = S.pant;
-                const sleeve = S.extra === 'tank' ? skin : shirt;
-                // 躯干
-                const T = [];
-                T.push(part('cyl', [0.62, 0.56, 0.72, 10], S.extra === 'tank' ? skinD : shirt, [0, 1.03, 0], null, [1, 1, 0.78]));
-                T.push(part('sph', [0.38, 8], skin, [0, 1.38, 0.02], null, [1.25, 0.6, 0.8]));
-                T.push(part('cyl', [0.26, 0.32, 0.22, 8], skinD, [0, 1.48, 0]));
-                T.push(part('box', [0.5, 0.2, 0.28], pant, [0, 0.72, 0]));
-                if (S.extra === 'tank') { T.push(part('cyl', [0.64, 0.58, 0.5, 10], 0x6a6f66, [0, 1.12, 0], null, [1.02, 1, 0.8])); }   // 背心
-                if (S.extra === 'hoodie') { T.push(part('sph', [0.5, 8], shirt, [0, 1.52, -0.14], null, [1.15, 0.7, 0.8])); T.push(part('box', [0.34, 0.16, 0.05], 0x40322a, [0, 0.9, 0.245])); }
-                if (S.extra === 'tie') { T.push(part('box', [0.075, 0.5, 0.02], 0x7a1f1f, [0, 1.02, 0.245])); T.push(part('box', [0.11, 0.09, 0.03], 0x7a1f1f, [0, 1.3, 0.245])); }
-                if (S.extra === 'vest') { for (const sx of [-0.17, 0.17]) T.push(part('box', [0.1, 0.62, 0.02], 0xc2661c, [sx, 1.08, 0.247])); T.push(part('box', [0.56, 0.06, 0.02], 0xd8d24a, [0, 0.92, 0.247])); T.push(part('box', [0.56, 0.06, 0.02], 0xd8d24a, [0, 1.2, 0.247])); }
-                if (S.extra === 'army') { T.push(part('box', [0.2, 0.18, 0.05], 0x3c4a35, [-0.14, 0.95, 0.25])); T.push(part('box', [0.2, 0.18, 0.05], 0x3c4a35, [0.14, 0.95, 0.25])); }
-                for (let i = 0; i < 5; i++) T.push(part('box', [0.1 + Math.random() * 0.12, 0.08 + Math.random() * 0.12, 0.025], i % 2 ? skinD : wound, [(Math.random() - 0.5) * 0.46, 0.82 + Math.random() * 0.48, 0.235], [0, 0, (Math.random() - 0.5) * 0.8]));
-                if (S.extra === 'tie' || S.extra === 'tank') for (let i = 0; i < 3; i++) T.push(part('box', [0.12 + Math.random() * 0.12, 0.1 + Math.random() * 0.14, 0.026], blood, [(Math.random() - 0.5) * 0.44, 0.85 + Math.random() * 0.45, 0.24], [0, 0, (Math.random() - 0.5) * 0.9]));   // 衣物血污
-                // 头
-                const H = [];
-                H.push(part('sph', [0.52, 10], skin, [0, 0, 0], null, [1.05, 1.13, 0.92]));
-                H.push(part('box', [0.30, 0.12, 0.13], skinD, [0, -0.19, 0.19]));
-                H.push(part('sph', [0.24, 6], skinD, [-0.19, -0.07, 0.15], null, [1, 0.7, 0.6])); H.push(part('sph', [0.24, 6], skinD, [0.19, -0.07, 0.15], null, [1, 0.7, 0.6]));
-                H.push(part('cyl', [0.0, 0.15, 0.18, 6], skin, [0, -0.02, 0.26], [Math.PI / 2, 0, 0]));
-                for (const x of [-0.115, 0.115]) H.push(part('sph', [0.15, 6], wound, [x, 0.055, 0.235], null, [1.2, 0.8, 0.45]));
-                H.push(part('box', [0.22, 0.1, 0.035], wound, [0, -0.115, 0.278]));
-                for (let i = 0; i < 6; i++) { H.push(part('cyl', [0.03, 0.0, 0.05, 4], boneC, [-0.085 + i * 0.034, -0.095, 0.302])); if (i % 2 === 0) H.push(part('cyl', [0.0, 0.025, 0.035, 4], boneC, [-0.085 + i * 0.034, -0.145, 0.3])); }
-                H.push(part('box', [0.07, 0.11, 0.025], wound, [0.20, -0.13, 0.22], [0, 0, -0.45]));
-                if (S.extra === 'hoodie') H.push(part('sph', [0.6, 8], shirt, [0, 0.07, -0.08], null, [1.0, 0.85, 0.95]));         // 兜帽套在脑后
-                if (S.extra === 'army') H.push(part('sph', [0.6, 8], 0x3c4a35, [0, 0.12, -0.01], null, [1.0, 0.68, 1.02]));         // 钢盔
-                if (S.extra === 'tie') H.push(part('box', [0.14, 0.2, 0.02], blood, [-0.17, -0.02, 0.255], [0, 0, 0.3]));          // 脸上血迹
-                // 手臂 / 腿
-                const mkArm = () => {
-                    const A = [];
-                    A.push(part('cyl', [0.21, 0.17, 0.56, 8], sleeve, [0, -0.23, 0]));
-                    A.push(part('sph', [0.21, 6], skin, [0, -0.52, 0.02]));
-                    if (S.extra === 'tank' || S.extra === 'vest') A.push(part('box', [0.12, 0.16, 0.04], blood, [0.0, -0.3, 0.1], [0, 0, 0.4]));
-                    for (let i = 0; i < 4; i++) { const fx = (i - 1.5) * 0.045; A.push(part('cyl', [0.03, 0.025, 0.13, 5], skin, [fx, -0.61, 0.055], [-0.35, 0, 0])); A.push(part('cyl', [0.036, 0.0, 0.055, 5], claw, [fx, -0.68, 0.075])); }
-                    return A;
-                };
-                const mkLeg = () => {
-                    const L = [];
-                    L.push(part('cyl', [0.26, 0.21, 0.58, 8], pant, [0, -0.24, 0]));
-                    L.push(part('box', [0.13, 0.08, 0.035], skinD, [0, -0.20, 0.115]));
-                    if (S.extra === 'army') L.push(part('box', [0.2, 0.16, 0.04], 0x3c4a35, [0, -0.3, 0.17]));
-                    L.push(part('box', [0.24, 0.15, 0.34], boot, [0, -0.52, 0.06]));
-                    return L;
-                };
-                ZA.v.push({
-                    torso: hideMaster(mergeParts(T, 'zT' + v, mat)), head: hideMaster(mergeParts(H, 'zH' + v, mat)),
-                    arm: hideMaster(mergeParts(mkArm(), 'zA' + v, mat)), leg: hideMaster(mergeParts(mkLeg(), 'zL' + v, mat))
-                });
-            }
-            // 重伤状态：血糊 + 外露肋骨（生命低于 55% 时显示）
-            const G = [];
-            for (let i = 0; i < 7; i++) G.push(part('box', [0.12 + Math.random() * 0.16, 0.1 + Math.random() * 0.18, 0.03], i % 3 ? blood : 0x2a0808, [(Math.random() - 0.5) * 0.5, 0.78 + Math.random() * 0.62, 0.262], [0, 0, (Math.random() - 0.5) * 1.0]));
-            for (let i = 0; i < 4; i++) G.push(part('box', [0.3, 0.03, 0.03], boneC, [0.02, 0.98 + i * 0.075, 0.268], [0, 0, (i - 1.5) * 0.06]));
-            G.push(part('box', [0.07, 0.26, 0.03], blood, [0.12, 1.58, 0.17]));      // 颈部淌血
-            ZA.gore = hideMaster(mergeParts(G, 'zGore', matVC('goreMat', 0.35)));
-            const eyeMat = stdMat('zEyeMat', { unlit: true, diffuse: [0.78, 0.74, 0.35], emissive: [0.62, 0.58, 0.22], spec: 0 });
-            const eyeRedMat = stdMat('zEyeRed', { unlit: true, diffuse: [1, 0.1, 0.08], emissive: [1.3, 0.12, 0.08], spec: 0 });
-            const mkEyes = (m, n) => hideMaster(mergeParts([part('sph', [0.05, 5], [1, 1, 1], [-0.115, 0.052, 0.272]), part('sph', [0.05, 5], [1, 1, 1], [0.115, 0.052, 0.272])], n, m));
-            ZA.eyes = mkEyes(eyeMat, 'zEyes'); ZA.eyesRed = mkEyes(eyeRedMat, 'zEyesR');
-            // 重甲：护肩 + 锈钢板
-            const PL = [];
-            for (const sd of [-1, 1]) {
-                PL.push(part('box', [0.31, 0.42, 0.12], 0x393b38, [sd * 0.27, 1.28, 0.12], [0, 0, sd * -0.16]));
-                for (let k = 0; k < 3; k++) PL.push(part('box', [0.035, 0.24, 0.13], 0x6a3f2b, [sd * 0.27 + (k - 1) * 0.07, 1.28 + (k % 2) * 0.04, 0.19]));
-            }
-            PL.push(part('box', [0.55, 0.3, 0.1], 0x34363a, [0, 1.0, 0.2]));
-            ZA.plates = hideMaster(mergeParts(PL, 'zPlates', matVC('plateMat', 0.3)));
-            // 毒胚：鼓胀腹部 + 发光脓包
-            ZA.belly = hideMaster(mergeParts([part('sph', [0.68, 10], 0x65724b, [0, 0.98, 0.16], null, [1.15, 1.0, 0.9]), part('sph', [0.2, 6], 0x39492d, [0.1, 0.9, 0.36])], 'zBelly', matVC('bellyMat', 0.1)));
-            const PU = [];
-            for (let k = 0; k < 9; k++) { const a = (k / 9) * Math.PI * 2; PU.push(part('sph', [0.11 + (k % 3) * 0.024, 6], [1, 1, 1], [Math.cos(a) * 0.25, 0.98 + Math.sin(a * 2) * 0.15, 0.405], null, [1, 0.95, 0.55])); }
-            ZA.pustule = hideMaster(mergeParts(PU, 'zPust', stdMat('pustMat', { unlit: true, diffuse: [0.6, 0.66, 0.24], emissive: [0.6, 0.7, 0.2], spec: 0 })));
+            buildHumanoidAssets();
         }
 
         // ---------- 通用工具 ----------
@@ -2940,7 +3087,7 @@
             }
         }
 
-        const STD_SPHERES = [[0, 1.78, 0, 0.30, ZONE_HEAD], [0, 1.28, 0, 0.38, ZONE_BODY], [0, 0.85, 0, 0.34, ZONE_BODY], [0, 0.42, 0, 0.30, ZONE_BODY]];
+        const STD_SPHERES = [[0, 1.75, 0.02, 0.22, ZONE_HEAD], [0, 1.32, 0, 0.34, ZONE_BODY], [0, 0.95, 0, 0.30, ZONE_BODY], [0, 0.45, 0, 0.28, ZONE_BODY]];
 
         class Zombie {
             constructor(type, x, z) {
@@ -2981,13 +3128,13 @@
                 const R = this.root;
                 const mk = (master, parent, x, y, z) => { const m = instOf(master, parent, x, y, z); this.insts.push(m); return m; };
                 this.torso = mk(v.torso, R);
-                this.headP = new B.TransformNode('hp', scene); this.headP.parent = R; this.headP.position.set(0, 1.76, 0);
+                this.headP = new B.TransformNode('hp', scene); this.headP.parent = R; this.headP.position.set(0, 1.60, 0.015);
                 this.headInsts = [mk(v.head, this.headP), mk(t === 'runner' ? ZA.eyesRed : ZA.eyes, this.headP)];
-                this.armL = new B.TransformNode('al', scene); this.armL.parent = R; this.armL.position.set(-0.40, 1.30, 0); this.armL.rotation.z = 0.10;
-                this.armR = new B.TransformNode('ar', scene); this.armR.parent = R; this.armR.position.set(0.40, 1.30, 0); this.armR.rotation.z = -0.10;
+                this.armL = new B.TransformNode('al', scene); this.armL.parent = R; this.armL.position.set(-0.235, 1.47, 0); this.armL.rotation.z = 0.08;
+                this.armR = new B.TransformNode('ar', scene); this.armR.parent = R; this.armR.position.set(0.235, 1.47, 0); this.armR.rotation.z = -0.08;
                 mk(v.arm, this.armL); mk(v.arm, this.armR);
-                this.legL = new B.TransformNode('ll', scene); this.legL.parent = R; this.legL.position.set(-0.17, 0.66, 0);
-                this.legR = new B.TransformNode('lr', scene); this.legR.parent = R; this.legR.position.set(0.17, 0.66, 0);
+                this.legL = new B.TransformNode('ll', scene); this.legL.parent = R; this.legL.position.set(-0.10, 0.93, 0);
+                this.legR = new B.TransformNode('lr', scene); this.legR.parent = R; this.legR.position.set(0.10, 0.93, 0);
                 mk(v.leg, this.legL); mk(v.leg, this.legR);
                 if (t === 'runner') { R.scaling.set(0.82, 1.04, 0.82); this.scale = 0.95; }
                 else if (t === 'armored') { R.scaling.set(1.32, 1.24, 1.22); this.scale = 1.25; mk(ZA.plates, R); }
@@ -2998,9 +3145,9 @@
                 this.scale *= jh;
                 this.gore = mk(ZA.gore, R); this.gore.setEnabled(false); this.goreOn = false;
                 this.boundY = 1.0 * this.scale; this.boundR = 1.35 * this.scale;
-                this.headY = 1.78;
+                this.headY = 1.95;
                 if (t === 'bloater') this.spheres = STD_SPHERES.concat([[0, 0.98, 0.30, 0.30, ZONE_WEAK]]);
-                else if (t === 'armored') this.spheres = [[0, 1.78, 0, 0.30, ZONE_HEAD], [0, 1.28, 0, 0.45, ZONE_BODY], [0, 0.85, 0, 0.40, ZONE_BODY], [0, 0.42, 0, 0.32, ZONE_BODY]];
+                else if (t === 'armored') this.spheres = [[0, 1.75, 0.02, 0.22, ZONE_HEAD], [0, 1.32, 0, 0.42, ZONE_BODY], [0, 0.95, 0, 0.36, ZONE_BODY], [0, 0.45, 0, 0.30, ZONE_BODY]];
                 this.root.rotation.y = this.yaw;
             }
             takeDamage(amount, isHead = false, isWeak = false, pierce = 0, dirX = 0, dirZ = 0) {
@@ -3279,46 +3426,112 @@
             else { z.legL.rotation.x *= 0.85; z.legR.rotation.x *= 0.85; }
         }
 
-        // 🪓 巨斧行刑者：厚重、缓慢、巨斧大范围劈砍
+
+        // ---- Boss 通用部件（人形比例，单位米，之后整体放大 z.scale）----
+        // 手臂：肩为原点；k=粗细倍率，L=长度倍率，肘略前屈
+        function bossArmParts(sk, skD, cloth, k, L, o = {}) {
+            const A = [], e = [0, -0.27 * L, 0.0], w = [0, -0.52 * L, 0.10 * L];
+            A.push(ball([0, 0, 0], 0.075 * k, o.shoulder || sk, [1, 0.95, 1]));
+            A.push(limb([0, 0, 0], e, 0.062 * k, 0.05 * k, cloth || sk));
+            A.push(ball(e, 0.056 * k, sk));
+            A.push(limb(e, w, 0.05 * k, 0.034 * k, sk));
+            A.push(limb([0, -0.05, 0.0], [0.0, -0.2 * L, 0.0], 0.066 * k, 0.062 * k, skD, 6)); // 肌肉隆起
+            if (o.bracer) { A.push(limb([0, -0.33 * L, 0.03 * L], [0, -0.47 * L, 0.085 * L], 0.054 * k, 0.045 * k, o.bracer)); for (let i = 0; i < 3; i++) A.push(part('cyl', [0.0, 0.02, 0.04, 4], 0x9a9a92, [0, -0.36 * L - i * 0.04, 0.05 * L + 0.06 + i * 0.01], [0.4, 0, 0])); }
+            if (o.spikes) for (let i = 0; i < (o.spikes||0); i++) A.push(part('cyl', [0.0, 0.03 * k, 0.12 * k, 5], o.spikeColor || BONE, [0, -0.27 * L + 0.0, -0.05 * k], [-1.2 - i * 0.2, 0, 0], null));
+            if (o.veins) for (let i = 0; i < 4; i++) A.push(limb([(i - 1.5) * 0.012 * k, -0.04 * L, 0.05 * k + 0.01], [(i - 1.5) * 0.02 * k + 0.01, -0.26 * L - i * 0.03, 0.06 * k + 0.01 + i * 0.004], 0.0045, 0.004, o.veins, 4));
+            A.push(part('box', [0.012 * k * 2, 0.22 * L, 0.006], o.noBlood ? skD : DRIED, [0.035 * k, -0.4 * L, 0.06 * L], [0.4, 0, 0.1]));
+            A.push(ball([-0.04 * k, -0.38 * L, 0.05 * L], 0.025 * k, FLESH, [1, 1.3, 0.5]));
+            handParts(w, sk, o.nail || 0x1f1d18, 1.0, o.hand || 1.3).forEach(m => A.push(m));
+            if (o.claws) for (let i = 0; i < 4; i++) { const fx = w[0] + (i - 1.5) * 0.0185 * (o.hand || 1.3); A.push(part('cyl', [0.0, 0.014, o.claws, 4], (o.clawColor||0xd8cfb0), [fx, w[1] - (0.082 + 0.077) * (o.hand || 1.3) - o.claws * 0.5 + 0.0, w[2] + 0.05 * (o.hand || 1.3)], [0.2, 0, 0])); }
+            return A;
+        }
+        function bossLegParts(sk, skD, pant, shoe, k, o = {}) {
+            const Lg = [];
+            Lg.push(limb([0, 0, 0], [0, -0.45, 0.03], 0.09 * k, 0.065 * k, pant));
+            Lg.push(ball([0, -0.45, 0.03], 0.068 * k, pant));
+            Lg.push(limb([0, -0.45, 0.03], [0, -0.87, 0.0], 0.062 * k, 0.045 * k, pant));
+            if (o.bareShin) Lg.push(limb([0, -0.6, 0.02], [0, -0.87, 0.0], 0.058 * k, 0.045 * k, sk));
+            if (o.strap) for (let i = 0; i < 2; i++) Lg.push(limb([0, -0.58 - i * 0.14, 0.02], [0, -0.62 - i * 0.14, 0.02], 0.067 * k, 0.067 * k, o.strap, 8));
+            Lg.push(part('box', [0.11 * k, 0.08, 0.27 * k], shoe, [0, -0.9, 0.08 * k]));
+            Lg.push(part('box', [0.114 * k, 0.025, 0.28 * k], 0x14120e, [0, -0.94, 0.08 * k]));
+            Lg.push(ball([0, -0.9, 0.18 * k], 0.056 * k, shoe, [1, 0.7, 1]));
+            if (o.toeClaws) for (let i = -1; i <= 1; i++) Lg.push(part('cyl', [0.0, 0.02, 0.09, 4], BONE, [i * 0.03, -0.91, 0.27 * k], [Math.PI / 2, 0, 0]));
+            Lg.push(part('box', [0.04, 0.07, 0.01], DRIED, [0.04 * k, -0.62, 0.06 * k], [0.2, 0.4, 0.1]));
+            return Lg;
+        }
+        function bossHandKit(z, name, parts, mat, parent) { return bossPiece(z, parts, name, mat, parent); }
+
+        // 🪓 巨斧行刑者：尖顶麻布头套（钉子）、背后十字架、铁链围裙、肌肉裂口渗血、环首巨斧
         function buildBossExecutioner(z) {
-            const R = z.root, mat = matVC('exeMat', 0.1);
-            z.scale = 1.85; R.scaling.set(1.85, 1.85, 1.85);
-            const skin = 0x6f6a5a, dark = 0x2c2b28, leather = 0x4a3526, steel = 0x8b8f93, rust = 0x6a3f2b;
-            const body = [
-                part('cyl', [0.9, 0.78, 0.95, 10], leather, [0, 1.15, 0], null, [1.1, 1, 0.82]),
-                part('box', [0.95, 0.22, 0.5], dark, [0, 0.72, 0]),
-                part('cyl', [0.3, 0.38, 0.22, 8], skin, [0, 1.74, 0]),
-                part('box', [0.1, 0.9, 0.04], dark, [0.22, 1.15, 0.37], [0, 0, 0.1]),
-                part('box', [0.1, 0.9, 0.04], dark, [-0.22, 1.15, 0.37], [0, 0, -0.1]),
-                part('sph', [0.5, 6], steel, [-0.58, 1.62, 0], null, [1, 0.6, 1]),   // 肩甲
-                part('sph', [0.5, 6], steel, [0.58, 1.62, 0], null, [1, 0.6, 1])
-            ];
-            bossPiece(z, body, 'exeBody', mat, R);
-            z.headP = bossPivot(R, 0, 1.9, 0);
-            bossPiece(z, [
-                part('sph', [0.58, 10], skin, [0, 0, 0], null, [1, 1.1, 0.95]),
-                part('box', [0.62, 0.34, 0.34], dark, [0, -0.02, 0.2]),                // 头罩
-                part('box', [0.5, 0.05, 0.06], 0xff3b1c, [0, 0.02, 0.38]),             // 红色护目缝
-                part('cyl', [0.03, 0.0, 0.26, 4], steel, [-0.3, 0.3, 0], [0, 0, 0.5]),
-                part('cyl', [0.03, 0.0, 0.26, 4], steel, [0.3, 0.3, 0], [0, 0, -0.5])
-            ], 'exeHead', mat, z.headP);
+            const R = z.root, mat = matVC('exeMat', 0.12);
+            z.scale = 1.75; R.scaling.set(1.75, 1.75, 1.75);
+            const sk = 0x4a3a46, skD = 0x2e2430, crack = 0x7a1a1a, apron = 0x2a2522, apronL = 0x3a322c, hood = 0x5e4d38, chain = 0x6a6a68, wood = 0x3a2a1e, steel = 0x5f5a60, rust = 0x5a3626, dark = 0x1c1816;
+            const T = [];
+            T.push(part('box', [0.38, 0.2, 0.22], dark, [0, 0.99, 0]));
+            T.push(part('cyl', [0.36, 0.38, 0.26, 10], sk, [0, 1.16, 0], null, [1.05, 1, 0.8]));
+            T.push(ball([0, 1.36, 0], 0.23, sk, [1.4, 1.0, 0.8]));
+            for (const sx of [-1, 1]) { T.push(ball([sx * 0.13, 1.38, 0.07], 0.105, skD, [1.2, 0.9, 0.7])); T.push(ball([sx * 0.33, 1.47, 0], 0.115, sk)); T.push(ball([sx * 0.18, 1.52, -0.03], 0.1, skD, [1.6, 0.6, 1.0])); }
+            T.push(limb([0, 1.45, 0], [0, 1.64, 0.0], 0.11, 0.09, skD));
+            // 围裙（到膝）+ 肩带 + 铁链腰带
+            T.push(part('box', [0.38, 0.62, 0.03], apron, [0, 1.0, 0.13]));
+            T.push(part('box', [0.4, 0.08, 0.025], apronL, [0, 0.69, 0.13], [0, 0, 0.03]));
+            for (let i = 0; i < 5; i++) T.push(part('box', [0.05 + (i % 2) * 0.02, 0.1, 0.03], apron, [-0.16 + i * 0.08, 0.66, 0.13], [0, 0, (i - 2) * 0.1]));
+            for (const sx of [-1, 1]) T.push(part('box', [0.07, 0.5, 0.025], apronL, [sx * 0.17, 1.4, 0.125], [0, 0, sx * 0.08]));
+            for (let i = 0; i < 14; i++) T.push(part('box', [0.04, 0.025, 0.03], chain, [-0.21 + i * 0.03, 1.07 + (i % 2) * 0.012, 0.15]));
+            T.push(part('box', [0.06, 0.07, 0.03], chain, [0, 1.07, 0.16]));
+            // 颈上粗铁链 + 吊坠
+            for (let i = 0; i < 12; i++) { const a = -1.3 + i * 0.236; T.push(part('box', [0.03, 0.02, 0.03], chain, [Math.sin(a) * 0.15, 1.6 - Math.cos(a) * 0.1 + 0.0, 0.1 + Math.cos(a) * 0.06], [0, a * 0.4, a * 0.3])); }
+            T.push(part('box', [0.03, 0.2, 0.02], chain, [0, 1.46, 0.17]));
+            T.push(part('box', [0.05, 0.07, 0.025], steel, [0, 1.33, 0.17]));
+            // 背后两个十字架
+            for (const sx of [-1, 1]) { T.push(part('box', [0.05, 0.5, 0.04], wood, [sx * 0.3, 1.75, -0.16], [0, 0, sx * -0.15])); T.push(part('box', [0.24, 0.05, 0.04], wood, [sx * 0.3 + sx * 0.0, 1.88, -0.16], [0, 0, sx * -0.15])); T.push(part('box', [0.2, 0.012, 0.045], 0x7a1a1a, [sx * 0.3, 1.92, -0.16])); }
+            T.push(part('box', [0.1, 0.5, 0.03], apronL, [0.25, 1.1, -0.13], [0, 0, -0.15]));
+            // 肌肉血裂口
+            for (let i = 0; i < 12; i++) T.push(part('box', [0.012, 0.08 + Math.random() * 0.1, 0.006], i % 3 ? crack : 0x3a0a0a, [(Math.random() - 0.5) * 0.6, 1.2 + Math.random() * 0.35, 0.115 - Math.abs((Math.random() - 0.5) * 0.1)], [0, 0, (Math.random() - 0.5) * 1.6]));
+            for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) T.push(part('box', [0.012, 0.1, 0.006], crack, [sx * (0.36 + Math.random() * 0.08), 1.38 + i * 0.05, 0.08], [0, 0.4, (Math.random() - 0.5)]));
+            bossPiece(z, T, 'exeBody', mat, R);
             z.torso = R;
-            z.armL = bossPivot(R, -0.78, 1.55, 0); z.armR = bossPivot(R, 0.78, 1.55, 0);
-            const arm = (c) => [part('cyl', [0.4, 0.3, 0.8, 8], c, [0, -0.38, 0]), part('sph', [0.38, 6], skin, [0, -0.82, 0.02])];
-            bossPiece(z, arm(leather), 'exeArmL', mat, z.armL);
-            bossPiece(z, arm(leather), 'exeArmR', mat, z.armR);
-            // 巨斧挂在右手
-            bossPiece(z, [
-                part('cyl', [0.07, 0.07, 2.3, 6], 0x5a4030, [0, -0.85, 0.55], [Math.PI / 2, 0, 0]),
-                part('box', [0.1, 0.9, 0.7], steel, [0, -0.85, 1.35]),
-                part('box', [0.12, 0.2, 0.2], rust, [0, -0.85, 0.95]),
-                part('box', [0.06, 0.4, 0.08], steel, [0, -0.85, 0.15], [0, 0, 0])
-            ], 'exeAxe', mat, z.armR);
-            z.legL = bossPivot(R, -0.3, 0.8, 0); z.legR = bossPivot(R, 0.3, 0.8, 0);
-            const leg = () => [part('cyl', [0.42, 0.34, 0.85, 8], dark, [0, -0.38, 0]), part('box', [0.4, 0.2, 0.55], 0x1c1b19, [0, -0.78, 0.08])];
-            bossPiece(z, leg(), 'exeLegL', mat, z.legL); bossPiece(z, leg(), 'exeLegR', mat, z.legR);
+            // 尖顶头套 + 三根钉子 + 缝合脸
+            z.headP = bossPivot(R, 0, 1.64, 0.015);
+            const H = [];
+            H.push(part('sph', [0.27, 12], hood, [0, 0.16, 0], null, [1.0, 1.1, 1.05]));
+            H.push(part('cyl', [0.0, 0.2, 0.26, 10], hood, [0, 0.38, -0.01]));                                       // 尖顶
+            H.push(part('cyl', [0.18, 0.2, 0.1, 10], 0x3e3224, [0, 0.0, 0.0]));                                    // 领口褶皱
+            for (let i = 0; i < 3; i++) H.push(part('cyl', [0.014, 0.014, 0.2, 5], 0x2a2a2c, [(i - 1) * 0.05, 0.5, -0.01 - (i === 1 ? 0.04 : 0)], [(i - 1) * 0.0, 0, (i - 1) * -0.35]));   // 钉子
+            for (let i = 0; i < 3; i++) H.push(ball([(i - 1) * 0.05 + (i - 1) * 0.0, 0.43, -0.01], 0.016, 0x4a4a4c));
+            H.push(ball([-0.05, 0.18, 0.115], 0.032, 0x0e0b09, [1, 0.8, 0.5]));
+            H.push(ball([0.055, 0.18, 0.112], 0.032, 0x0e0b09, [1, 0.8, 0.5]));
+            H.push(part('box', [0.1, 0.05, 0.03], 0x1a0d0a, [0, 0.05, 0.125]));
+            for (let i = 0; i < 6; i++) H.push(part('box', [0.011, 0.022, 0.01], TEETH, [-0.04 + i * 0.016, 0.055, 0.145]));
+            for (let i = 0; i < 5; i++) H.push(part('box', [0.035, 0.008, 0.008], 0x1c140e, [0, 0.0 + i * 0.045 + 0.08, 0.13], [0.25, 0, 0]));
+            H.push(part('box', [0.1, 0.12, 0.012], BLOOD, [-0.06, 0.13, 0.125], [0, 0, 0.3]));
+            H.push(part('box', [0.03, 0.14, 0.01], BLOOD, [0.0, 0.0, 0.14]));
+            bossPiece(z, H, 'exeHead', mat, z.headP);
+            const eye = stdMat('exeEye', { unlit: true, diffuse: [1, 0.2, 0.1], emissive: [1.6, 0.25, 0.1], spec: 0 });
+            bossPiece(z, [ball([-0.05, 0.18, 0.122], 0.014, [1, 1, 1]), ball([0.055, 0.18, 0.12], 0.014, [1, 1, 1])], 'exeEye', eye, z.headP);
+            z.armL = bossPivot(R, -0.37, 1.47, 0); z.armR = bossPivot(R, 0.37, 1.47, 0);
+            const ao = { hand: 1.55, veins: 0x5a1a22, bracer: 0x2c2420, spikes: 0, noBlood: false };
+            bossPiece(z, bossArmParts(sk, skD, sk, 1.8, 1.05, ao), 'exeArmL', mat, z.armL);
+            bossPiece(z, bossArmParts(sk, skD, sk, 1.8, 1.05, ao), 'exeArmR', mat, z.armR);
+            // 环首巨斧：木柄 + 圆环尾 + 弧形刃，握在右手
+            const AX = [];
+            AX.push(part('cyl', [0.05, 0.055, 1.5, 7], wood, [0, -0.6, 0.62], [Math.PI / 2, 0, 0]));
+            for (let i = 0; i < 4; i++) AX.push(part('cyl', [0.064, 0.064, 0.03, 7], 0x1c140e, [0, -0.6, 0.12 + i * 0.09], [Math.PI / 2, 0, 0]));
+            AX.push(part('box', [0.08, 0.12, 0.16], dark, [0, -0.6, 1.36]));
+            AX.push(part('box', [0.06, 0.7, 0.52], steel, [0, -0.6, 1.52]));
+            AX.push(part('box', [0.05, 0.3, 0.26], steel, [0, -1.02, 1.62], [0.4, 0, 0]));
+            AX.push(part('box', [0.05, 0.26, 0.22], steel, [0, -0.18, 1.6], [-0.4, 0, 0]));
+            AX.push(part('box', [0.045, 0.66, 0.05], 0xb8bcc0, [0, -0.6, 1.8]));
+            for (let i = 0; i < 3; i++) AX.push(part('box', [0.07, 0.06, 0.06], dark, [0, -0.4 - i * 0.14, 1.8], [0, 0, 0.5]));
+            for (let a = 0; a < 10; a++) AX.push(part('box', [0.07, 0.04, 0.035], steel, [0, -0.6 + Math.cos(a * 0.63) * 0.11, 1.52 - 1.5 + 0.0 + Math.sin(a * 0.63) * 0.11 + 0.32], [a * 0.63, 0, 0]));   // 环
+            for (let i = 0; i < 6; i++) AX.push(part('box', [0.07, 0.08 + Math.random() * 0.1, 0.1 + Math.random() * 0.12], i % 2 ? BLOOD : rust, [0, -0.4 - Math.random() * 0.4, 1.4 + Math.random() * 0.35]));
+            bossPiece(z, AX, 'exeAxe', mat, z.armR);
+            z.legL = bossPivot(R, -0.14, 0.93, 0); z.legR = bossPivot(R, 0.14, 0.93, 0);
+            const lo = { strap: 0x4a3a2a };
+            bossPiece(z, bossLegParts(skD, skD, 0x2a2420, 0x181310, 1.45, lo), 'exeLegL', mat, z.legL);
+            bossPiece(z, bossLegParts(skD, skD, 0x2a2420, 0x181310, 1.45, lo), 'exeLegR', mat, z.legR);
             z.boundY = 1.0 * z.scale; z.boundR = 1.9 * z.scale;
-            z.spheres = [[0, 1.92, 0, 0.42, ZONE_HEAD], [0, 1.3, 0, 0.62, ZONE_BODY], [0, 0.75, 0, 0.55, ZONE_BODY], [0, 0.25, 0, 0.45, ZONE_BODY]];
+            z.spheres = [[0, 1.82, 0.02, 0.3, ZONE_HEAD], [0, 1.36, 0, 0.52, ZONE_BODY], [0, 0.95, 0, 0.44, ZONE_BODY], [0, 0.45, 0, 0.38, ZONE_BODY]];
             z.animateBoss = (dt, moving) => {
                 bossLegAnim(z, dt, moving, 0.42);
                 const wp = z.windup > 0 ? 1 - z.windup / z.windupMax : -1;
@@ -3328,36 +3541,57 @@
             };
         }
 
-        // 🩸 狂暴暴君：修长、红皮、长臂，会冲刺；残血发光狂暴
+        // 🩸 狂暴暴君：灰蓝色皮肤、紫色血管网、红眼、长弯爪、前倾佝偻的瘦长怪物
         function buildBossTyrant(z) {
             const R = z.root;
             z.scale = 1.5; R.scaling.set(1.5, 1.5, 1.5);
-            const mat = stdMat('tyrMat', { spec: 0.1, emissive: [0.08, 0.0, 0.0] });
+            const mat = stdMat('tyrMat', { spec: 0.22, emissive: [0.0, 0.0, 0.0] });
             z.tyrantMat = mat;
-            const skin = 0x8a2a24, skinD = 0x5e1b18, bone = 0xd8cfb4, dark = 0x2a1b1a;
-            bossPiece(z, [
-                part('cyl', [0.8, 0.52, 1.0, 10], skin, [0, 1.15, 0], null, [1.05, 1, 0.75]),
-                part('box', [0.5, 0.22, 0.34], dark, [0, 0.7, 0]),
-                part('cyl', [0.2, 0.28, 0.26, 8], skinD, [0, 1.75, 0]),
-                ...[0, 1, 2, 3].map(k => part('cyl', [0.0, 0.1, 0.3, 5], bone, [0, 1.5 - k * 0.22, -0.3], [-1.1, 0, 0]))   // 背刺
-            ], 'tyrBody', mat, R);
+            const sk = 0x7f86a4, skD = 0x4c5272, skL = 0x9096b2, vein = 0x6a2a8a, claw = 0x10142a, tooth = 0xd8d4c4;
+            const T = [];
+            T.push(part('box', [0.28, 0.15, 0.17], skD, [0, 0.98, 0]));
+            T.push(part('cyl', [0.2, 0.25, 0.26, 10], sk, [0, 1.15, 0], null, [1.0, 1, 0.7]));
+            T.push(ball([0, 1.36, 0], 0.17, sk, [1.3, 1.0, 0.8]));
+            for (const sx of [-1, 1]) {
+                T.push(ball([sx * 0.09, 1.38, 0.065], 0.09, skL, [1.2, 0.85, 0.7]));
+                T.push(ball([sx * 0.265, 1.47, 0], 0.085, sk));
+                T.push(limb([sx * 0.05, 1.5, 0.03], [sx * 0.2, 1.52, -0.01], 0.05, 0.07, skD));                      // 斜方肌
+                for (let k = 0; k < 3; k++) T.push(part('box', [0.07, 0.07, 0.025], k % 2 ? skL : sk, [sx * 0.04, 1.08 + k * 0.075, 0.11]));
+                T.push(limb([sx * 0.02, 1.46, 0.12], [sx * 0.07, 1.3, 0.14], 0.007, 0.006, vein, 4));
+            }
+            T.push(limb([0, 1.44, 0], [0, 1.64, 0.03], 0.06, 0.045, skD));
+            T.push(part('box', [0.03, 0.03, 0.01], 0x4aff4a, [0, 1.55, 0.065]));                                    // 颈部绿色发光点（近似）
+            // 紫色血管：胸腹躯干网
+            for (let i = 0; i < 14; i++) { const a = i * 1.1, x = Math.sin(a) * 0.15; T.push(limb([x, 1.1 + (i % 5) * 0.1, 0.13], [x * 0.7 + 0.03, 1.2 + (i % 5) * 0.1 + 0.07, 0.125], 0.006, 0.005, vein, 4)); }
+            T.push(limb([0, 1.0, 0.115], [0, 1.45, 0.12], 0.007, 0.006, skD, 4));
+            for (let i = 0; i < 5; i++) T.push(part('box', [0.2 - i * 0.012, 0.01, 0.012], skD, [0, 1.12 + i * 0.065, 0.13]));
+            bossPiece(z, T, 'tyrBody', mat, R);
             z.torso = R;
-            z.headP = bossPivot(R, 0, 1.92, 0.05);
-            bossPiece(z, [
-                part('sph', [0.5, 10], skin, [0, 0, 0], null, [0.95, 1.12, 1]),
-                part('box', [0.34, 0.14, 0.2], skinD, [0, -0.2, 0.2]),
-                part('sph', [0.1, 5], [1, 0.85, 0.1], [-0.13, 0.05, 0.22]), part('sph', [0.1, 5], [1, 0.85, 0.1], [0.13, 0.05, 0.22]),
-                ...[0, 1, 2, 3, 4].map(k => part('cyl', [0.03, 0.0, 0.07, 4], bone, [-0.1 + k * 0.05, -0.17, 0.33]))
-            ], 'tyrHead', mat, z.headP);
-            z.armL = bossPivot(R, -0.6, 1.55, 0); z.armR = bossPivot(R, 0.6, 1.55, 0);
-            const arm = () => [part('cyl', [0.28, 0.2, 1.2, 8], skin, [0, -0.6, 0]), part('sph', [0.34, 6], skinD, [0, -1.25, 0.03]),
-                ...[-1, 0, 1].map(k => part('cyl', [0.05, 0.0, 0.5, 5], bone, [k * 0.1, -1.55, 0.1], [-0.2, 0, 0]))];
-            bossPiece(z, arm(), 'tyrArmL', mat, z.armL); bossPiece(z, arm(), 'tyrArmR', mat, z.armR);
-            z.legL = bossPivot(R, -0.22, 0.78, 0); z.legR = bossPivot(R, 0.22, 0.78, 0);
-            const leg = () => [part('cyl', [0.3, 0.2, 0.8, 8], skinD, [0, -0.36, 0]), part('box', [0.26, 0.15, 0.42], dark, [0, -0.78, 0.08])];
-            bossPiece(z, leg(), 'tyrLegL', mat, z.legL); bossPiece(z, leg(), 'tyrLegR', mat, z.legR);
+            // 头：光滑拉长的灰蓝颅骨、红色发光眼、獠牙嘴
+            z.headP = bossPivot(R, 0, 1.64, 0.04);
+            const H = [];
+            H.push(part('sph', [0.22, 12], sk, [0, 0.17, -0.02], null, [0.9, 1.25, 1.12]));
+            H.push(part('sph', [0.16, 10], skL, [0, 0.08, 0.045], null, [1.0, 1.0, 0.85]));
+            H.push(part('box', [0.14, 0.03, 0.05], skD, [0, 0.2, 0.08], [-0.15, 0, 0]));
+            for (const sx of [-1, 1]) { H.push(ball([sx * 0.045, 0.165, 0.088], 0.03, 0x14102a, [1.1, 0.7, 0.5])); H.push(ball([sx * 0.095, 0.08, 0.06], 0.03, skD, [0.6, 1.2, 0.5])); H.push(part('box', [0.006, 0.12, 0.006], vein, [sx * 0.05, 0.28, 0.02], [0.2, 0, sx * 0.3])); }
+            H.push(part('box', [0.07, 0.035, 0.05], 0x2a1020, [0, 0.075, 0.095]));
+            for (let i = 0; i < 6; i++) H.push(part('cyl', [0.011, 0.0, 0.03 + (i % 2) * 0.012, 4], tooth, [-0.03 + i * 0.012, 0.062, 0.12], [Math.PI, 0, 0]));
+            const J = [part('box', [0.07, 0.04, 0.1], skD, [0, 0.0, 0.05]), part('box', [0.06, 0.025, 0.07], 0x3a1428, [0, 0.025, 0.07])];
+            for (let i = 0; i < 6; i++) J.push(part('cyl', [0.011, 0.0, 0.03 + (i % 3 === 0 ? 0.02 : 0), 4], tooth, [-0.03 + i * 0.012, 0.04, 0.1]));
+            J.forEach(m => { m.position.y -= 0.05; m.rotation.x = 0.55; }); H.push(...J);
+            bossPiece(z, H, 'tyrHead', mat, z.headP);
+            const glow = stdMat('tyrEye', { unlit: true, diffuse: [1, 0.1, 0.1], emissive: [1.8, 0.12, 0.1], spec: 0 });
+            bossPiece(z, [ball([-0.045, 0.165, 0.093], 0.02, [1, 1, 1], [1.2, 0.75, 0.6]), ball([0.045, 0.165, 0.093], 0.02, [1, 1, 1], [1.2, 0.75, 0.6])], 'tyrEyes', glow, z.headP);
+            z.armL = bossPivot(R, -0.27, 1.47, 0); z.armR = bossPivot(R, 0.27, 1.47, 0);
+            const ao = { claws: 0.26, hand: 1.55, clawColor: claw, nail: claw, veins: vein, noBlood: true };
+            bossPiece(z, bossArmParts(sk, skD, sk, 1.0, 1.35, ao), 'tyrArmL', mat, z.armL);
+            bossPiece(z, bossArmParts(sk, skD, sk, 1.0, 1.35, ao), 'tyrArmR', mat, z.armR);
+            z.legL = bossPivot(R, -0.11, 0.93, 0); z.legR = bossPivot(R, 0.11, 0.93, 0);
+            const lo = { bareShin: true };
+            bossPiece(z, bossLegParts(sk, skD, sk, skD, 1.0, lo), 'tyrLegL', mat, z.legL);
+            bossPiece(z, bossLegParts(sk, skD, sk, skD, 1.0, lo), 'tyrLegR', mat, z.legR);
             z.boundY = 1.0 * z.scale; z.boundR = 1.6 * z.scale;
-            z.spheres = [[0, 1.95, 0.05, 0.36, ZONE_HEAD], [0, 1.3, 0, 0.5, ZONE_BODY], [0, 0.78, 0, 0.42, ZONE_BODY], [0, 0.28, 0, 0.34, ZONE_BODY]];
+            z.spheres = [[0, 1.8, 0.04, 0.26, ZONE_HEAD], [0, 1.33, 0, 0.38, ZONE_BODY], [0, 0.92, 0, 0.32, ZONE_BODY], [0, 0.42, 0, 0.28, ZONE_BODY]];
             z.animateBoss = (dt, moving) => {
                 bossLegAnim(z, dt, moving, 0.7);
                 const wp = z.windup > 0 ? 1 - z.windup / z.windupMax : -1;
@@ -3367,50 +3601,95 @@
             };
         }
 
-        // 👁️ 畸变母体主宰：高大畸形，胸口发光核心是弱点，触须摆动，周期性脉冲召唤
+        // 带尖刺的分节触手（以枢轴为原点，向 -Y 延伸并略带弯曲）
+        function tentacleParts(len, r0, col, colD, spikeCol, curl = 0.0, nSeg = 6) {
+            const P = []; let prev = [0, 0, 0];
+            for (let j = 0; j < nSeg; j++) {
+                const f = (j + 1) / nSeg, r1 = r0 * (1 - f * 0.8);
+                const nx = [Math.sin(j * 0.7) * 0.04 * len, -len * f, curl * f * f * len * 0.5];
+                P.push(limb(prev, nx, r0 * (1 - j / nSeg * 0.8), r1, j % 2 ? col : colD, 7));
+                P.push(ball(nx, r1 * 1.05, col));
+                for (let s = 0; s < 2; s++) { const mx = (prev[0] + nx[0]) / 2, my = (prev[1] + nx[1]) / 2, mz = (prev[2] + nx[2]) / 2, rr = r1 * 1.1; P.push(part('cyl', [0.0, rr * 0.7, rr * 2.2, 4], spikeCol, [mx + (s ? rr : -rr) * 0.9, my, mz], [0, 0, s ? -1.2 : 1.2])); }
+                prev = nx;
+            }
+            P.push(part('cyl', [0.0, r0 * 0.3, len * 0.12, 5], spikeCol, [prev[0], prev[1] - len * 0.06, prev[2]]));
+            return P;
+        }
+
+        // 👁️ 畸变母体：独眼女体 + 橙色发光肿瘤 + 触须下肢 + 背后多条尖刺触手
         function buildBossMatriarch(z) {
             const R = z.root;
-            z.scale = 2.1; R.scaling.set(2.1, 2.1, 2.1);
-            const mat = matVC('matMat', 0.12), glow = stdMat('matGlow', { unlit: true, diffuse: [0.75, 1, 0.3], emissive: [0.75, 1.0, 0.3], spec: 0 });
-            const skin = 0x56604b, skinD = 0x363e30, flesh = 0x7a3b4a, bone = 0xcfc7aa;
-            bossPiece(z, [
-                part('sph', [1.5, 12], skin, [0, 1.15, 0], null, [1, 1.15, 0.85]),
-                part('sph', [0.9, 8], skinD, [0.45, 0.85, 0.15]), part('sph', [0.7, 8], flesh, [-0.5, 1.45, 0.2]),
-                part('cyl', [0.55, 0.9, 0.5, 8], skinD, [0, 0.45, 0]),
-                ...[0, 1, 2, 3, 4, 5].map(k => part('cyl', [0.0, 0.12, 0.5, 5], bone, [Math.cos(k * 1.05) * 0.5, 1.9 + (k % 2) * 0.05, -0.2 + Math.sin(k * 1.05) * 0.3], [-0.5, 0, Math.cos(k) * 0.4]))
-            ], 'matBody', mat, R);
-            bossPiece(z, [part('sph', [0.46, 8], [1, 1, 1], [0, 1.3, 0.62], null, [1, 1, 0.7])], 'matCore', glow, R);   // 胸口核心
+            z.scale = 1.75; R.scaling.set(1.75, 1.75, 1.75);
+            const mat = matVC('matMat', 0.2);
+            const glowMat = stdMat('matGlow', { unlit: true, diffuse: [1, 0.5, 0.1], emissive: [1.5, 0.55, 0.12], spec: 0 });
+            const skin = 0x4a2c40, skinD = 0x2a1a2c, skinL = 0x6a3a50, hair = 0x3a2418, spike = 0xc8b8c0, flesh = 0x7a3040, eyeYel = 0xffd818;
+            const T = [];
+            T.push(part('cyl', [0.3, 0.34, 0.2, 10], skinD, [0, 1.02, 0], null, [1, 1, 0.8]));                       // 腰
+            T.push(part('cyl', [0.28, 0.32, 0.26, 10], skin, [0, 1.2, 0], null, [1, 1, 0.8]));                         // 腹
+            T.push(ball([0, 1.4, 0.0], 0.2, skin, [1.15, 1.0, 0.85]));                                                // 胸
+            T.push(ball([-0.095, 1.38, 0.07], 0.095, skinL, [1, 0.9, 0.8])); T.push(ball([0.095, 1.38, 0.07], 0.095, skinL, [1, 0.9, 0.8]));
+            for (const sx of [-1, 1]) { T.push(ball([sx * 0.3, 1.52, 0.0], 0.14, skinD, [1, 0.9, 1])); T.push(limb([sx * 0.06, 1.52, 0.02], [sx * 0.24, 1.55, 0.0], 0.05, 0.08, skin)); }   // 肩
+            T.push(limb([0, 1.5, 0.0], [0, 1.68, 0.02], 0.065, 0.05, skin));
+            // 暗色腹部肋纹与血管
+            for (let i = 0; i < 5; i++) T.push(part('box', [0.18, 0.012, 0.01], skinD, [0, 1.12 + i * 0.055, 0.14]));
+            for (let i = 0; i < 10; i++) T.push(limb([Math.sin(i * 1.7) * 0.18, 1.0 + (i % 5) * 0.1, 0.14], [Math.sin(i * 1.7) * 0.16, 1.1 + (i % 5) * 0.1, 0.14], 0.006, 0.005, 0x7a2a48, 4));
+            // 肩/胸口暗色肿块底座
+            const tum = [[-0.3, 1.58, 0.02, 0.1], [-0.35, 1.45, 0.04, 0.08], [0.3, 1.58, 0.02, 0.1], [0.34, 1.46, 0.03, 0.085], [-0.14, 1.5, 0.1, 0.07], [0.15, 1.5, 0.1, 0.07], [-0.1, 1.3, 0.14, 0.06], [0.1, 1.31, 0.14, 0.065], [0.0, 1.2, 0.15, 0.085], [-0.14, 1.15, 0.14, 0.055], [0.14, 1.14, 0.14, 0.055], [0.0, 1.04, 0.15, 0.06]];
+            tum.forEach(t => T.push(ball([t[0], t[1], t[2]], t[3] * 1.12, 0x3a1a20)));
+            bossPiece(z, T, 'matBody', mat, R);
+            // 橙色发光肿瘤（自发光，群簇）
+            const G = [];
+            tum.forEach((t, i) => { G.push(ball([t[0], t[1], t[2] + t[3] * 0.25], t[3], [1, 0.5 + (i % 3) * 0.1, 0.1], [1, 1, 0.85])); for (let k = 0; k < 3; k++) G.push(ball([t[0] + (k - 1) * t[3] * 0.5, t[1] + (k % 2 ? 0.4 : -0.3) * t[3], t[2] + t[3] * 0.65], t[3] * 0.35, [1, 0.75, 0.25])); });
+            bossPiece(z, G, 'matCore', glowMat, R);
             z.torso = R;
-            z.headP = bossPivot(R, 0, 2.15, 0.05);
-            bossPiece(z, [
-                part('sph', [0.62, 10], skin, [0, 0, 0], null, [1, 1.1, 1]),
-                part('sph', [0.2, 6], [0.85, 1, 0.2], [-0.16, 0.06, 0.26]), part('sph', [0.2, 6], [0.85, 1, 0.2], [0.16, 0.06, 0.26]),
-                part('sph', [0.16, 6], [0.85, 1, 0.2], [0, 0.25, 0.25]),
-                part('box', [0.4, 0.14, 0.2], flesh, [0, -0.2, 0.26])
-            ], 'matHead', mat, z.headP);
-            z.armL = bossPivot(R, -0.85, 1.6, 0); z.armR = bossPivot(R, 0.85, 1.6, 0);
-            const arm = () => [part('cyl', [0.34, 0.2, 1.4, 8], skin, [0, -0.7, 0]), part('sph', [0.5, 6], skinD, [0, -1.45, 0.05]),
-                ...[-1, 0, 1].map(k => part('cyl', [0.06, 0.0, 0.7, 5], bone, [k * 0.14, -1.85, 0.12], [-0.25, 0, 0]))];
-            bossPiece(z, arm(), 'matArmL', mat, z.armL); bossPiece(z, arm(), 'matArmR', mat, z.armR);
-            z.legL = bossPivot(R, -0.35, 0.8, 0); z.legR = bossPivot(R, 0.35, 0.8, 0);
-            const leg = () => [part('cyl', [0.5, 0.3, 0.85, 8], skinD, [0, -0.38, 0]), part('box', [0.4, 0.18, 0.5], 0x20241d, [0, -0.78, 0.08])];
-            bossPiece(z, leg(), 'matLegL', mat, z.legL); bossPiece(z, leg(), 'matLegR', mat, z.legR);
-            // 触须
+            // 头：人脸 + 额头单眼（黄色大眼）+ 长发 + 头顶触角状卷须
+            z.headP = bossPivot(R, 0, 1.66, 0.03);
+            const H = [];
+            H.push(part('sph', [0.22, 12], 0x7a5a5c, [0, 0.16, 0], null, [0.92, 1.12, 1.0]));
+            H.push(part('sph', [0.16, 10], 0x7a5a5c, [0, 0.09, 0.03], null, [1.0, 1.0, 0.9]));
+            for (const sx of [-1, 1]) { H.push(ball([sx * 0.045, 0.13, 0.085], 0.028, 0x1a0e12, [1.1, 0.8, 0.5])); H.push(ball([sx * 0.045, 0.13, 0.093], 0.013, 0xb0b8c0, [1, 0.8, 0.5])); H.push(ball([sx * 0.07, 0.085, 0.065], 0.03, 0x5a3e44, [0.6, 1.2, 0.5])); }
+            H.push(part('box', [0.024, 0.04, 0.026], 0x7a5a5c, [0, 0.09, 0.1], [0.3, 0, 0]));
+            H.push(part('box', [0.07, 0.012, 0.02], 0x3a1018, [0, 0.048, 0.1]));
+            H.push(part('box', [0.04, 0.006, 0.02], 0x8a2a30, [0, 0.062, 0.098]));
+            H.push(ball([0, 0.23, 0.092], 0.04, 0x1a0c10, [1, 1, 0.45]));                                              // 额头眼眶
+            H.push(part('box', [0.016, 0.1, 0.01], 0x3a0a0a, [0.04, 0.13, 0.1], [0, 0, 0.2]));
+            // 长发（披到肩）
+            H.push(part('sph', [0.25, 10], hair, [0, 0.2, -0.04], null, [1.0, 0.85, 1.05]));
+            for (const sx of [-1, 1]) { H.push(part('box', [0.055, 0.34, 0.08], hair, [sx * 0.1, 0.0, 0.0], [0, 0, sx * -0.05])); H.push(part('box', [0.04, 0.3, 0.06], hair, [sx * 0.12, -0.1, 0.02], [0, 0, sx * -0.12])); }
+            H.push(part('box', [0.18, 0.4, 0.05], hair, [0, 0.0, -0.1]));
+            for (let i = 0; i < 9; i++) { const a = (i / 9 - 0.5) * 2.4; H.push(limb([Math.sin(a) * 0.08, 0.3, -0.03], [Math.sin(a) * 0.17, 0.43, -0.07], 0.012, 0.006, 0x5a1a30, 4)); H.push(limb([Math.sin(a) * 0.17, 0.43, -0.07], [Math.sin(a) * 0.23, 0.5 + (i % 2) * 0.03, -0.07], 0.006, 0.004, 0x5a1a30, 4)); }
+            bossPiece(z, H, 'matHead', mat, z.headP);
+            const eyeG = stdMat('matEyes', { unlit: true, diffuse: [1, 0.85, 0.1], emissive: [1.6, 1.25, 0.15], spec: 0 });
+            bossPiece(z, [ball([0, 0.232, 0.096], 0.027, [1, 1, 1], [1, 1, 0.55])], 'matEyes', eyeG, z.headP);
+            // 手臂：细长、带尖刺与弯爪
+            z.armL = bossPivot(R, -0.34, 1.52, 0); z.armR = bossPivot(R, 0.34, 1.52, 0);
+            const ao = { claws: 0.24, hand: 1.6, clawColor: spike, nail: 0x2a1a24, spikes: 3, spikeColor: spike, veins: 0x7a2a48, noBlood: true };
+            bossPiece(z, bossArmParts(skin, skinD, skin, 0.95, 1.4, ao), 'matArmL', mat, z.armL);
+            bossPiece(z, bossArmParts(skin, skinD, skin, 0.95, 1.4, ao), 'matArmR', mat, z.armR);
+            // 下肢：两条粗触手（带尖刺），其余触手随身摆动
+            z.legL = bossPivot(R, -0.13, 0.95, 0); z.legR = bossPivot(R, 0.13, 0.95, 0);
+            bossPiece(z, tentacleParts(0.95, 0.11, skin, skinD, spike, 0.1, 6), 'matLegL', mat, z.legL);
+            bossPiece(z, tentacleParts(0.95, 0.11, skin, skinD, spike, 0.1, 6), 'matLegR', mat, z.legR);
+            // 地面上的静态触手（前后各 2 条，盘在脚边）
+            const GT = [];
+            [[-0.28, 0.6, 0.3], [0.28, 0.6, -0.3], [-0.22, 0.55, -0.4], [0.24, 0.55, 0.38]].forEach((q, i) => { const tp = tentacleParts(0.85, 0.07, skin, skinD, spike, 0.5, 5); tp.forEach(m => { m.position.x += q[0]; m.position.y += 0.85; m.position.z += q[1] * (i % 2 ? -1 : 1) * 0.0 + q[2] * 0.6; m.rotation.y = i * 1.6; }); GT.push(...tp); });
+            bossPiece(z, GT, 'matGroundTent', mat, R);
+            // 背后 4 条大触手：从肩后伸出，向两侧弯曲，带尖刺，可摆动
             z.tentacles = [];
             for (let k = 0; k < 4; k++) {
-                const p = bossPivot(R, (k < 2 ? -1 : 1) * 0.5, 1.7, -0.45);
-                bossPiece(z, [part('cyl', [0.18, 0.04, 1.9, 6], flesh, [0, -0.95, 0])], 'matTent', mat, p);
-                p.rotation.z = (k < 2 ? 1 : -1) * 0.9; z.tentacles.push(p);
+                const side = k < 2 ? -1 : 1, p = bossPivot(R, side * 0.28, k % 2 ? 1.3 : 1.62, -0.14);
+                bossPiece(z, tentacleParts(1.15, 0.065, skin, skinD, spike, -0.5, 7), 'matTent', mat, p);
+                p.rotation.z = side * (k % 2 ? 1.1 : 0.75); z.tentacles.push(p);
             }
             z.boundY = 1.1 * z.scale; z.boundR = 2.1 * z.scale;
-            z.spheres = [[0, 2.15, 0.05, 0.46, ZONE_HEAD], [0, 1.3, 0.55, 0.38, ZONE_WEAK], [0, 1.2, 0, 0.82, ZONE_BODY], [0, 0.55, 0, 0.55, ZONE_BODY]];
+            z.spheres = [[0, 1.8, 0.04, 0.26, ZONE_HEAD], [0, 1.2, 0.15, 0.22, ZONE_WEAK], [0, 1.38, 0, 0.42, ZONE_BODY], [0, 0.8, 0, 0.4, ZONE_BODY], [0, 0.35, 0, 0.34, ZONE_BODY]];
             z.animateBoss = (dt, moving) => {
                 bossLegAnim(z, dt, moving, 0.3);
                 const wp = z.windup > 0 ? 1 - z.windup / z.windupMax : -1;
                 if (wp >= 0) { const a = wp < 0.55 ? -0.6 - wp * 2.6 : -2.0 + (wp - 0.55) * 6; z.armL.rotation.x = a; z.armR.rotation.x = a; }
                 else { z.armL.rotation.x = -0.3 + Math.sin(z.animPhase * 0.8) * 0.2; z.armR.rotation.x = -0.3 - Math.sin(z.animPhase * 0.8) * 0.2; }
                 for (let k = 0; k < z.tentacles.length; k++) z.tentacles[k].rotation.x = Math.sin(z.animPhase * 1.4 + k * 1.6) * 0.5;
-                z.headP.rotation.z = Math.sin(z.animPhase * 0.5) * 0.12;
+                z.headP.rotation.z = Math.sin(z.animPhase * 0.5) * 0.08;
             };
         }
 
@@ -4391,7 +4670,7 @@
             updateBasis();
             // 手电：跟随视线
             const on = gameState.flashlightOn && flashlight.intensity > 0;
-            flSpot.intensity = on ? flashlight.intensity * (0.96 + Math.random() * 0.04) : 0;
+            flSpot.intensity = on ? flashlight.intensity * 0.7 * (0.96 + Math.random() * 0.04) : 0;
             if (on) { flSpot.position.set(camState.x, camState.y - 0.1, camState.z); flSpot.direction.set(basis.fx, basis.fy, basis.fz); }
             hemi.intensity = HEMI_BASE + FXS.flash * 0.45;
         }
