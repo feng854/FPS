@@ -1518,6 +1518,33 @@
             } catch (e) { console.warn('ssao failed', e); ssaoDead = true; ssao = null; }
         }
 
+        // ---------- 体积光：太阳光束（仅桌面全开档；懒创建，运行时才初始化）----------
+        let godrays = null, grDead = false, grDisc = null, grWant = false;
+        function setGodrays(w) { grWant = !!w; }
+        function tickGodrays() {
+            if (IS_TOUCH || grDead) return;
+            try {
+                if (grWant && !godrays) {
+                    const tex = dynTex('sunDiscTex', 128, 128, (c, w, h) => {
+                        const g = c.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w / 2);
+                        g.addColorStop(0, 'rgba(255,246,222,1)'); g.addColorStop(0.35, 'rgba(255,232,185,0.85)'); g.addColorStop(1, 'rgba(255,220,160,0)');
+                        c.clearRect(0, 0, w, h); c.fillStyle = g; c.fillRect(0, 0, w, h);
+                    }, { alpha: true });
+                    grDisc = B.MeshBuilder.CreatePlane('sunDisc', { size: 44 }, scene);
+                    grDisc.billboardMode = B.Mesh.BILLBOARDMODE_ALL;
+                    grDisc.infiniteDistance = true; grDisc.isPickable = false;
+                    grDisc.position.set(-sunDir.x * 180, -sunDir.y * 180, -sunDir.z * 180);
+                    grDisc.material = stdMat('sunDiscMat', { tex, alphaTex: true, unlit: true, diffuse: [1, 0.95, 0.8], noFog: true, noDepthWrite: true, spec: 0 });
+                    godrays = new B.VolumetricLightScatteringPostProcess('gr', 1.0, camera, grDisc, 55, B.Texture.BILINEAR_SAMPLINGMODE, engine, false);
+                    godrays.exposure = 0.16; godrays.decay = 0.965; godrays.weight = 0.45; godrays.density = 0.94;
+                    godrays._on = true;
+                }
+                if (!godrays || grWant === !!godrays._on) return;
+                if (grWant) camera.attachPostProcess(godrays); else camera.detachPostProcess(godrays);
+                godrays._on = grWant; if (grDisc) grDisc.setEnabled(grWant);
+            } catch (e) { console.warn('godrays failed', e); grDead = true; try { if (grDisc) grDisc.setEnabled(false); } catch (e2) {} godrays = null; }
+        }
+
         // ---------- 自适应画质 ----------
         const GFX = { mode: URL_Q || 'auto', scaleLevel: 1, tier: 0, basePR: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 1.8) };
         // 凹凸贴图登记表：只在桌面端、特效档 < 2 时启用（手机不启用，省片元开销）
@@ -1535,6 +1562,7 @@
             on(() => { setBumpsEnabled(!IS_TOUCH && tier < 2); });
             on(() => { if (pipeline && !IS_TOUCH) pipeline.samples = tier < 3 && engine.webGLVersion > 1 ? 4 : 1; if (pipeline) { const fx = tier >= 3 || IS_TOUCH; pipeline.fxaaEnabled = fx; pipeline.sharpenEnabled = fx && tier < 3; } });
             on(() => { setSSAO(!IS_TOUCH && tier < 1); });
+            on(() => { setGodrays(!IS_TOUCH && tier < 1); });
         }
         function setQualityMode(mode) {
             GFX.mode = mode;
@@ -1587,6 +1615,16 @@
             if (cfg.noDepthWrite) m.disableDepthWrite = true;
             if (cfg.additive) m.alphaMode = B.Engine.ALPHA_ADD;
             if (cfg.maxLights) m.maxSimultaneousLights = cfg.maxLights;
+            if (cfg.rim) {                       // 轮廓光：仅在边缘出现的自发光（菲涅尔）
+                try {
+                    const f = new B.FresnelParameters();
+                    f.bias = cfg.rim[4] !== undefined ? cfg.rim[4] : 0.2;
+                    f.power = cfg.rim[3] || 2.5;
+                    f.leftColor = new B.Color3(1, 1, 1); f.rightColor = B.Color3.Black();
+                    m.emissiveColor = new B.Color3(cfg.rim[0], cfg.rim[1], cfg.rim[2]);
+                    m.emissiveFresnelParameters = f;
+                } catch (e) {}
+            }
             _mats[key] = m;
             return m;
         }
@@ -2194,6 +2232,7 @@
             return o;
         }
         function updateDayNight(dt) {
+            try { tickGodrays(); } catch (e) {}
             const t = gameState.isRunning || gameState.isGameOver ? gameState.elapsedTime : 0;
             const target = gameState.activeBoss && !gameState.activeBoss.dead ? 1 : 0;
             DN.boss += (target - DN.boss) * Math.min(1, dt * 1.5);
@@ -2229,6 +2268,12 @@
                 WREF.pools.visibility = Math.min(1, v.lamp * 0.9);
             }
             setReflectionScale(v.refl);
+            try {                                 // 体积光随夜晚减弱、日落偏红
+                if (godrays && godrays._on) {
+                    godrays.exposure = 0.16 * (1 - v.night * 0.8) * (1 - r * 0.5);
+                    godrays.weight = 0.45 * (1 - v.night * 0.6);
+                }
+            } catch (e) {}
         }
 
 
@@ -2343,6 +2388,44 @@
             ringM.material = stdMat('ringMat', { tex: TEX.ring, alphaTex: true, unlit: true, emissive: [1, 1, 1], diffuse: [0, 0, 0], twoSided: true, additive: true, noDepthWrite: true, noFog: true, spec: 0 });
             FXS.rings = []; for (let i = 0; i < 4; i++) { const d = ringM.createInstance('r' + i); d.setEnabled(false); d.isPickable = false; d.rotation.x = Math.PI / 2; FXS.rings.push({ m: d, t: 0, max: 0, life: 0, r: 0 }); }
             FXS.ringIdx = 0;
+            // 枪口动态光：开火瞬间照亮墙面与丧尸
+            try {
+                FXS.gunLight = new B.PointLight('gunL', new B.Vector3(0, 0, 0), scene);
+                FXS.gunLight.diffuse = new B.Color3(1, 0.72, 0.4); FXS.gunLight.specular = new B.Color3(1, 0.8, 0.5);
+                FXS.gunLight.intensity = 0; FXS.gunLight.range = 16;
+                FXS.gunLight.parent = camera; FXS.gunLight.position.set(0.12, -0.06, 0.9);
+            } catch (e) { FXS.gunLight = null; }
+            // 空气尘埃：跟随玩家漂浮的颗粒，给光束和空间感
+            try {
+                FXS.dustEmitter = new B.Vector3(0, 1.5, 0);
+                const dp = new B.ParticleSystem('dust', IS_TOUCH ? 30 : 80, scene);
+                dp.particleTexture = TEX.glow; dp.emitter = FXS.dustEmitter;
+                dp.minEmitBox = new B.Vector3(-7, -1.2, -7); dp.maxEmitBox = new B.Vector3(7, 2.5, 7);
+                dp.color1 = C4(0.9, 0.88, 0.8, 0.05); dp.color2 = C4(0.8, 0.8, 0.75, 0.09); dp.colorDead = C4(0.7, 0.7, 0.7, 0);
+                dp.minSize = 0.015; dp.maxSize = 0.05;
+                dp.minLifeTime = 2.5; dp.maxLifeTime = 5; dp.emitRate = IS_TOUCH ? 7 : 16;
+                dp.blendMode = B.ParticleSystem.BLENDMODE_ONEONE;
+                dp.direction1 = new B.Vector3(-0.25, -0.05, -0.25); dp.direction2 = new B.Vector3(0.25, 0.12, 0.25);
+                dp.minEmitPower = 0.08; dp.maxEmitPower = 0.3; dp.updateSpeed = 0.01;
+                dp.start(); FXS.dust = dp;
+            } catch (e) { FXS.dust = null; }
+            // 远处废墟烟柱：城市四角缓慢升起的黑烟
+            try {
+                FXS.plumes = [];
+                const spots = [[34, 7, -42], [-46, 9, 30], [12, 6, 58], [-25, 5, -60]];
+                for (let k = 0; k < spots.length; k++) {
+                    const ps = new B.ParticleSystem('plume' + k, 30, scene);
+                    ps.particleTexture = TEX.smoke; ps.emitter = new B.Vector3(spots[k][0], spots[k][1], spots[k][2]);
+                    ps.minEmitBox = new B.Vector3(-1, 0, -1); ps.maxEmitBox = new B.Vector3(1, 0.5, 1);
+                    ps.color1 = C4(0.16, 0.15, 0.14, 0.4); ps.color2 = C4(0.23, 0.21, 0.2, 0.28); ps.colorDead = C4(0.26, 0.26, 0.26, 0);
+                    ps.minSize = 2.0; ps.maxSize = 4.2;
+                    ps.minLifeTime = 4; ps.maxLifeTime = 7; ps.emitRate = IS_TOUCH ? 2.5 : 4;
+                    ps.gravity = new B.Vector3(0.5, 1.6, 0.25);
+                    ps.direction1 = new B.Vector3(-0.2, 1, -0.2); ps.direction2 = new B.Vector3(0.4, 1.6, 0.3);
+                    ps.minEmitPower = 0.5; ps.maxEmitPower = 1.1; ps.updateSpeed = 0.01;
+                    ps.start(); FXS.plumes.push(ps);
+                }
+            } catch (e) {}
             FXS.flash = 0;   // 爆炸/枪口闪光对半球光的脉冲
         }
 
@@ -2414,6 +2497,8 @@
                 r.m.scaling.set(s, s, 1);
             }
             if (FXS.flash > 0) { FXS.flash = Math.max(0, FXS.flash - dt * 4); }
+            try { if (FXS.gunLight) FXS.gunLight.intensity = FXS.flash * 24; } catch (e) {}
+            try { if (FXS.dustEmitter) { FXS.dustEmitter.x = yawObject.position.x; FXS.dustEmitter.y = yawObject.position.y + 0.4; FXS.dustEmitter.z = yawObject.position.z; } } catch (e) {}
         }
 
         // ======================================================================
@@ -2558,7 +2643,7 @@
         }
         function buildViewModels() {
             vm.root = new B.TransformNode('vmRoot', scene);
-            const mat = matVC('vmMat', 0.3, { noFog: true }); mat.specularPower = 40;
+            const mat = matVC('vmMat', 0.55, { noFog: true }); mat.specularPower = 72;
             for (let id = 0; id < 4; id++) { const m = makeGunModel(id, mat); m.node.parent = vm.root; vm.models[id] = m; }
         }
         function showViewModel(id) {
@@ -2984,7 +3069,7 @@
         ];
 
         function buildHumanoidAssets() {
-            const mats = [0, 1, 2].map(i => stdMat('zomMat' + i, { tex: texGrunge(i), spec: 0.03 }));
+            const mats = [0, 1, 2].map(i => stdMat('zomMat' + i, { tex: texGrunge(i), spec: 0.14, power: 52, rim: [0.065, 0.095, 0.065, 3, 0.22] }));
             for (let v = 0; v < ZSTYLES.length; v++) {
                 const st = ZSTYLES[v], S = SKINS[v % SKINS.length], mat = mats[v % 3];
                 const hd = headParts(S, { hair: st.hair, hairStyle: st.hairStyle, woundSide: v % 2 ? 1 : -1, wound: v !== 3 });
@@ -3463,7 +3548,7 @@
 
         // 🪓 巨斧行刑者：尖顶麻布头套（钉子）、背后十字架、铁链围裙、肌肉裂口渗血、环首巨斧
         function buildBossExecutioner(z) {
-            const R = z.root, mat = matVC('exeMat', 0.12);
+            const R = z.root, mat = matVC('exeMat', 0.16, { power: 40, rim: [0.08, 0.09, 0.13, 3, 0.2] });
             z.scale = 1.75; R.scaling.set(1.75, 1.75, 1.75);
             const sk = 0x4a3a46, skD = 0x2e2430, crack = 0x7a1a1a, apron = 0x2a2522, apronL = 0x3a322c, hood = 0x5e4d38, chain = 0x6a6a68, wood = 0x3a2a1e, steel = 0x5f5a60, rust = 0x5a3626, dark = 0x1c1816;
             const T = [];
@@ -3545,7 +3630,7 @@
         function buildBossTyrant(z) {
             const R = z.root;
             z.scale = 1.5; R.scaling.set(1.5, 1.5, 1.5);
-            const mat = stdMat('tyrMat', { spec: 0.22, emissive: [0.0, 0.0, 0.0] });
+            const mat = stdMat('tyrMat', { spec: 0.32, power: 56, rim: [0.26, 0.04, 0.05, 2.5, 0.15] });
             z.tyrantMat = mat;
             const sk = 0x7f86a4, skD = 0x4c5272, skL = 0x9096b2, vein = 0x6a2a8a, claw = 0x10142a, tooth = 0xd8d4c4;
             const T = [];
@@ -3620,7 +3705,7 @@
         function buildBossMatriarch(z) {
             const R = z.root;
             z.scale = 1.75; R.scaling.set(1.75, 1.75, 1.75);
-            const mat = matVC('matMat', 0.2);
+            const mat = matVC('matMat', 0.26, { power: 44, rim: [0.2, 0.1, 0.24, 2.5, 0.2] });
             const glowMat = stdMat('matGlow', { unlit: true, diffuse: [1, 0.5, 0.1], emissive: [1.5, 0.55, 0.12], spec: 0 });
             const skin = 0x4a2c40, skinD = 0x2a1a2c, skinL = 0x6a3a50, hair = 0x3a2418, spike = 0xc8b8c0, flesh = 0x7a3040, eyeYel = 0xffd818;
             const T = [];
